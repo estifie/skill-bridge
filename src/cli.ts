@@ -3,16 +3,18 @@ import path from "node:path";
 import process from "node:process";
 import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import chalk from "chalk";
-import { Command, Option } from "commander";
+import { Command, InvalidArgumentError, Option } from "commander";
 import { discoverSkills } from "./discover.js";
 import { filterSkills } from "./filter.js";
 import { importSkills } from "./importer.js";
 import { resolvePath } from "./paths.js";
-import type { ImportResult, SkillCandidate, SkillPlatform } from "./types.js";
+import type { ConflictAction, ImportConflict, ImportResult, SkillCandidate, SkillPlatform } from "./types.js";
 
 interface BridgeOptions {
+  from?: SkillPlatform;
+  to?: SkillPlatform;
   source?: string[];
-  target: string;
+  target?: string;
   cwd: string;
   all?: boolean;
   filter?: string;
@@ -20,20 +22,18 @@ interface BridgeOptions {
   dryRun?: boolean;
   overwrite?: boolean;
   skipExisting?: boolean;
+  onConflict?: ConflictPolicy;
   personal?: boolean;
   project?: boolean;
   codexMetadata?: boolean;
 }
 
-interface DirectionConfig {
-  command: string;
+interface MigrationConfig {
   sourcePlatform: SkillPlatform;
   targetPlatform: SkillPlatform;
-  description: string;
-  defaultTarget: string;
   sourceLabel: string;
   targetLabel: string;
-  emptyMessage: string;
+  targetDir: string;
 }
 
 interface SelectOptions {
@@ -41,118 +41,53 @@ interface SelectOptions {
   filterQuery?: string;
 }
 
-type DirectionChoice = "to-codex" | "to-claude" | "cancel";
+type PlatformChoice = SkillPlatform | "cancel";
 type SelectionAction = "search" | "browse" | "all" | "cancel";
 type SearchResultAction = "choose" | "all" | "again" | "back" | "cancel";
+type ConflictPromptAction = "overwrite" | "skip" | "overwrite-all" | "skip-all" | "cancel";
+type ConflictPolicy = "ask" | "skip" | "overwrite";
 
-const directions: Record<Exclude<DirectionChoice, "cancel">, DirectionConfig> = {
-  "to-codex": {
-    command: "to-codex",
-    sourcePlatform: "claude",
-    targetPlatform: "codex",
-    description: "Migrate Claude Code skills into Codex.",
-    defaultTarget: "~/.codex/skills",
-    sourceLabel: "Claude Code",
-    targetLabel: "Codex",
-    emptyMessage: "No Claude Code skills were found.",
-  },
-  "to-claude": {
-    command: "to-claude",
-    sourcePlatform: "codex",
-    targetPlatform: "claude",
-    description: "Migrate Codex skills into Claude Code.",
-    defaultTarget: "~/.claude/skills",
-    sourceLabel: "Codex",
-    targetLabel: "Claude Code",
-    emptyMessage: "No Codex skills were found.",
-  },
+const platformLabels: Record<SkillPlatform, string> = {
+  claude: "Claude Code",
+  codex: "Codex",
 };
 
 export async function runCli(argv: string[] = process.argv): Promise<void> {
   const program = new Command()
     .name("skill-bridge")
     .description("Bidirectional CLI for migrating skills between Claude Code and Codex.")
-    .version("0.1.0");
-
-  addDirectionCommand(program, directions["to-codex"]);
-  addDirectionCommand(program, directions["to-claude"]);
-
-  program.action(async () => {
-    printHeader();
-    const choice = await select<DirectionChoice>({
-      message: "What do you want to migrate?",
-      choices: [
-        {
-          name: "Claude Code -> Codex",
-          value: "to-codex",
-          description: directions["to-codex"].description,
-        },
-        {
-          name: "Codex -> Claude Code",
-          value: "to-claude",
-          description: directions["to-claude"].description,
-        },
-        {
-          name: "Cancel",
-          value: "cancel",
-        },
-      ],
-    });
-
-    if (choice === "cancel") {
-      console.log(chalk.yellow("Migration cancelled."));
-      return;
-    }
-
-    await runMigration(directions[choice], defaultOptions(directions[choice]));
-  });
-
-  await program.parseAsync(argv);
-}
-
-function addDirectionCommand(program: Command, config: DirectionConfig): void {
-  program
-    .command(config.command)
-    .description(config.description)
-    .option("-s, --source <path...>", `Custom ${config.sourceLabel} skills directory or a single skill directory.`)
-    .option("-t, --target <path>", `${config.targetLabel} skills directory.`, config.defaultTarget)
-    .option("--cwd <path>", `Project directory used for ${config.sourceLabel} skill discovery.`, process.cwd())
+    .version("0.1.0")
+    .addOption(new Option("--from <platform>", "Source platform: claude or codex.").argParser(parsePlatform))
+    .addOption(new Option("--to <platform>", "Target platform: claude or codex.").argParser(parsePlatform))
+    .option("-s, --source <path...>", "Custom source skills directory or a single skill directory.")
+    .option("-t, --target <path>", "Target skills directory. Defaults to the selected target platform.")
+    .option("--cwd <path>", "Project directory used for project skill discovery.", process.cwd())
     .option("-a, --all", "Select every discovered skill without opening the selector.")
     .option("-f, --filter <query>", "Filter discovered skills by name, description, scope, or relative path.")
     .option("-y, --yes", "Accept the migration confirmation prompt.")
     .option("--dry-run", "Show what would be migrated without writing files.")
-    .option("--overwrite", "Replace existing destination skill folders.")
-    .option("--skip-existing", "Skip skills whose destination folder already exists.")
-    .addOption(new Option("--no-personal", `Do not scan personal ${config.sourceLabel} skills.`).default(true))
-    .addOption(new Option("--no-project", `Do not scan project ${config.sourceLabel} skills.`).default(true))
+    .option("--overwrite", "Overwrite every differing destination skill.")
+    .option("--skip-existing", "Skip every existing destination skill.")
+    .addOption(new Option("--on-conflict <action>", "Conflict policy: ask, skip, or overwrite.").argParser(parseConflictPolicy))
+    .addOption(new Option("--no-personal", "Do not scan personal source skills.").default(true))
+    .addOption(new Option("--no-project", "Do not scan project source skills.").default(true))
     .addOption(new Option("--no-codex-metadata", "Do not create agents/openai.yaml when migrating to Codex.").default(true))
     .action(async (options: BridgeOptions) => {
-      await runMigration(config, options);
+      printHeader();
+      await runMigration(options);
     });
+
+  await program.parseAsync(argv);
 }
 
-function defaultOptions(config: DirectionConfig): BridgeOptions {
-  return {
-    target: config.defaultTarget,
-    cwd: process.cwd(),
-    personal: true,
-    project: true,
-    codexMetadata: true,
-  };
-}
-
-async function runMigration(config: DirectionConfig, options: BridgeOptions): Promise<void> {
+async function runMigration(options: BridgeOptions): Promise<void> {
   const homeDir = os.homedir();
   const cwd = resolvePath(options.cwd, process.cwd(), homeDir);
-  const targetDir = resolvePath(options.target, cwd, homeDir);
+  const config = await resolveMigrationConfig(options, cwd, homeDir);
   const sources = options.source ?? [];
 
-  if (process.argv[2] === config.command) {
-    printHeader();
-  }
-
   console.log(chalk.bold(`${config.sourceLabel} -> ${config.targetLabel}`));
-  console.log(chalk.dim(config.description));
+  console.log(chalk.dim(`Migrate ${config.sourceLabel} skills into ${config.targetLabel}.`));
   console.log("");
 
   const candidates = await discoverSkills({
@@ -165,7 +100,7 @@ async function runMigration(config: DirectionConfig, options: BridgeOptions): Pr
   });
 
   if (candidates.length === 0) {
-    console.log(chalk.yellow(config.emptyMessage));
+    console.log(chalk.yellow(`No ${config.sourceLabel} skills were found.`));
     console.log(chalk.dim("Pass --source <path> if your skills live in a custom directory."));
     return;
   }
@@ -186,11 +121,11 @@ async function runMigration(config: DirectionConfig, options: BridgeOptions): Pr
     return;
   }
 
-  printMigrationPlan(selected, targetDir, Boolean(options.dryRun), Boolean(options.overwrite));
+  printMigrationPlan(selected, config.targetDir, Boolean(options.dryRun), conflictModeLabel(options));
 
   if (!options.yes && !options.dryRun) {
     const approved = await confirm({
-      message: `Migrate ${selected.length} skill${selected.length === 1 ? "" : "s"} into ${targetDir}?`,
+      message: `Migrate ${selected.length} skill${selected.length === 1 ? "" : "s"} into ${config.targetDir}?`,
       default: false,
     });
 
@@ -200,16 +135,88 @@ async function runMigration(config: DirectionConfig, options: BridgeOptions): Pr
     }
   }
 
+  const conflictResolver = createConflictResolver(options);
   const results = await importSkills(selected, {
     targetPlatform: config.targetPlatform,
-    targetDir,
-    overwrite: Boolean(options.overwrite),
-    skipExisting: Boolean(options.skipExisting),
+    targetDir: config.targetDir,
+    overwrite: Boolean(options.overwrite || options.onConflict === "overwrite"),
+    skipExisting: Boolean(options.skipExisting || options.onConflict === "skip"),
     createCodexMetadata: options.codexMetadata ?? true,
     dryRun: Boolean(options.dryRun),
+    ...(conflictResolver ? { resolveConflict: conflictResolver } : {}),
   });
 
   printResults(results);
+}
+
+async function resolveMigrationConfig(options: BridgeOptions, cwd: string, homeDir: string): Promise<MigrationConfig> {
+  const sourcePlatform = options.from ?? await promptSourcePlatform();
+  const targetPlatform = options.to ?? await promptTargetPlatform(sourcePlatform);
+
+  if (sourcePlatform === targetPlatform) {
+    throw new Error("--from and --to must be different platforms.");
+  }
+
+  const targetDir = resolvePath(options.target ?? defaultTargetDir(targetPlatform), cwd, homeDir);
+
+  return {
+    sourcePlatform,
+    targetPlatform,
+    sourceLabel: platformLabels[sourcePlatform],
+    targetLabel: platformLabels[targetPlatform],
+    targetDir,
+  };
+}
+
+async function promptSourcePlatform(): Promise<SkillPlatform> {
+  const choice = await select<PlatformChoice>({
+    message: "Which platform do you want to migrate from?",
+    choices: [
+      {
+        name: "Claude Code",
+        value: "claude",
+        description: "Read skills from ~/.claude/skills and project .claude/skills.",
+      },
+      {
+        name: "Codex",
+        value: "codex",
+        description: "Read skills from ~/.codex/skills and project .codex/skills.",
+      },
+      {
+        name: "Cancel",
+        value: "cancel",
+      },
+    ],
+  });
+
+  if (choice === "cancel") {
+    throw new Error("Migration cancelled.");
+  }
+
+  return choice;
+}
+
+async function promptTargetPlatform(sourcePlatform: SkillPlatform): Promise<SkillPlatform> {
+  const targetPlatform = sourcePlatform === "claude" ? "codex" : "claude";
+  const choice = await select<PlatformChoice>({
+    message: "Which platform do you want to migrate to?",
+    choices: [
+      {
+        name: platformLabels[targetPlatform],
+        value: targetPlatform,
+      },
+      {
+        name: "Cancel",
+        value: "cancel",
+      },
+    ],
+  });
+
+  if (choice === "cancel") {
+    throw new Error("Migration cancelled.");
+  }
+
+  return choice;
 }
 
 async function selectCandidates(candidates: SkillCandidate[], options: SelectOptions): Promise<SkillCandidate[]> {
@@ -361,6 +368,89 @@ async function selectFromList(candidates: SkillCandidate[]): Promise<SkillCandid
   return candidates.filter((candidate) => selected.has(candidate.id));
 }
 
+function createConflictResolver(options: BridgeOptions): ((conflict: ImportConflict) => Promise<ConflictAction>) | undefined {
+  if (options.yes || options.dryRun || options.overwrite || options.skipExisting || options.onConflict === "skip" || options.onConflict === "overwrite") {
+    return undefined;
+  }
+
+  if (!process.stdin.isTTY) {
+    return undefined;
+  }
+
+  let applyToAll: ConflictAction | undefined;
+
+  return async (conflict) => {
+    if (applyToAll) {
+      return applyToAll;
+    }
+
+    console.log("");
+    console.log(chalk.yellow(`Destination already has a different ${conflict.candidate.name} skill.`));
+    console.log(chalk.dim(`Target: ${conflict.destinationDir}`));
+    console.log(chalk.dim(`Source checksum: ${conflict.sourceChecksum}`));
+    console.log(chalk.dim(`Destination checksum: ${conflict.destinationChecksum}`));
+
+    const action = await select<ConflictPromptAction>({
+      message: "What should I do?",
+      choices: [
+        { name: "Overwrite this skill", value: "overwrite" },
+        { name: "Skip this skill", value: "skip" },
+        { name: "Overwrite this and all remaining conflicts", value: "overwrite-all" },
+        { name: "Skip this and all remaining conflicts", value: "skip-all" },
+        { name: "Cancel migration", value: "cancel" },
+      ],
+    });
+
+    if (action === "overwrite-all") {
+      applyToAll = "overwrite";
+      return "overwrite";
+    }
+
+    if (action === "skip-all") {
+      applyToAll = "skip";
+      return "skip";
+    }
+
+    return action;
+  };
+}
+
+function parsePlatform(value: string): SkillPlatform {
+  if (value === "claude" || value === "codex") {
+    return value;
+  }
+
+  throw new InvalidArgumentError("Expected claude or codex.");
+}
+
+function parseConflictPolicy(value: string): ConflictPolicy {
+  if (value === "ask" || value === "overwrite" || value === "skip") {
+    return value;
+  }
+
+  throw new InvalidArgumentError("Expected ask, skip, or overwrite.");
+}
+
+function defaultTargetDir(platform: SkillPlatform): string {
+  return platform === "claude" ? "~/.claude/skills" : "~/.codex/skills";
+}
+
+function conflictModeLabel(options: BridgeOptions): string {
+  if (options.overwrite || options.onConflict === "overwrite") {
+    return "overwrite differing destination skills";
+  }
+
+  if (options.skipExisting || options.onConflict === "skip") {
+    return "skip existing destination skills";
+  }
+
+  if (options.yes || options.dryRun || !process.stdin.isTTY) {
+    return "skip existing destination skills unless --overwrite is set";
+  }
+
+  return "ask before overwriting differing destination skills";
+}
+
 function printFilteredCount(filteredCount: number, totalCount: number): void {
   console.log(chalk.dim(`Filtered to ${filteredCount} of ${totalCount} skill${totalCount === 1 ? "" : "s"}.`));
 }
@@ -374,12 +464,12 @@ function printMigrationPlan(
   candidates: SkillCandidate[],
   targetDir: string,
   dryRun: boolean,
-  overwrite: boolean,
+  modeLabel: string,
 ): void {
   console.log("");
   console.log(chalk.bold(dryRun ? "Dry run plan" : "Migration plan"));
   console.log(`${chalk.dim("Target")} ${targetDir}`);
-  console.log(`${chalk.dim("Mode")} ${overwrite ? "overwrite existing skills" : "skip existing skills unless --overwrite is set"}`);
+  console.log(`${chalk.dim("Conflict mode")} ${modeLabel}`);
 
   for (const candidate of candidates) {
     console.log(`  ${chalk.green("•")} ${candidate.name} ${chalk.dim(relativeOrAbsolute(candidate.sourceDir))}`);
@@ -389,13 +479,15 @@ function printMigrationPlan(
 }
 
 function printResults(results: ImportResult[]): void {
-  const imported = results.filter((result) => result.status === "imported" || result.status === "would-import");
+  const migrated = results.filter((result) => ["imported", "overwritten", "would-import", "would-overwrite"].includes(result.status));
   const skipped = results.filter((result) => result.status === "skipped" || result.status === "would-skip");
+  const dryRun = results.some((result) => result.status.startsWith("would-"));
 
   console.log(chalk.bold("Result"));
 
   for (const result of results) {
-    const marker = result.status === "imported" || result.status === "would-import" ? chalk.green("✓") : chalk.yellow("-");
+    const success = ["imported", "overwritten", "would-import", "would-overwrite"].includes(result.status);
+    const marker = success ? chalk.green("✓") : chalk.yellow("-");
     console.log(`  ${marker} ${result.candidate.name} ${chalk.dim(`-> ${result.destinationDir}`)} ${chalk.dim(result.status)}`);
 
     for (const note of result.notes) {
@@ -404,10 +496,7 @@ function printResults(results: ImportResult[]): void {
   }
 
   console.log("");
-  const dryRun = results.some((result) => result.status === "would-import" || result.status === "would-skip");
-  const importLabel = dryRun ? "would migrate" : "migrated";
-  const skipLabel = dryRun ? "would skip" : "skipped";
-  console.log(`${chalk.green(String(imported.length))} ${importLabel}, ${chalk.yellow(String(skipped.length))} ${skipLabel}.`);
+  console.log(`${chalk.green(String(migrated.length))} ${dryRun ? "would migrate" : "migrated"}, ${chalk.yellow(String(skipped.length))} ${dryRun ? "would skip" : "skipped"}.`);
 }
 
 function relativeOrAbsolute(input: string): string {

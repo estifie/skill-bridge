@@ -2,12 +2,12 @@
 
 Bidirectional CLI for migrating skills between Claude Code and Codex.
 
-Skill Bridge discovers skill folders, lets you search or select them from a terminal UI, shows a migration plan, then copies each complete skill directory into the target platform. Supporting files such as scripts, references, examples, and assets are preserved.
+Skill Bridge discovers skill folders, lets you choose source and target platforms, search or select skills from a terminal UI, shows a migration plan, then copies each complete skill directory into the target platform. Supporting files such as scripts, references, examples, and assets are preserved.
 
 ## Features
 
-- Migrates Claude Code skills to Codex with `skill-bridge to-codex`
-- Migrates Codex skills to Claude Code with `skill-bridge to-claude`
+- Migrates between Claude Code and Codex with one command
+- Supports `--from claude --to codex` and `--from codex --to claude`
 - Discovers personal skills from `~/.claude/skills` and `~/.codex/skills`
 - Discovers project skills from `.claude/skills` and `.codex/skills`
 - Follows symlinked skill directories
@@ -15,6 +15,10 @@ Skill Bridge discovers skill folders, lets you search or select them from a term
 - Starts interactive runs with a clear action menu
 - Supports search/filter, browse all, select all, and cancel flows
 - Copies the full skill directory, not just `SKILL.md`
+- Detects existing destination skills with SHA-256 checksums
+- Automatically skips identical destination skills
+- Asks whether to overwrite or skip differing destination skills
+- Supports overwrite all / skip all conflict decisions
 - Creates optional `agents/openai.yaml` metadata when migrating to Codex
 - Omits Codex-only `agents/openai.yaml` metadata when migrating to Claude Code
 - Supports dry runs, overwrite mode, and non-interactive migrations
@@ -27,11 +31,12 @@ Run the bridge:
 npx skill-bridge
 ```
 
-Interactive mode starts with a direction menu:
+Interactive mode starts by asking where skills should move from and to:
 
 ```text
-Claude Code -> Codex
-Codex -> Claude Code
+Which platform do you want to migrate from?
+Claude Code
+Codex
 Cancel
 ```
 
@@ -47,64 +52,67 @@ Cancel
 Migrate Claude Code skills to Codex:
 
 ```bash
-npx skill-bridge to-codex
+npx skill-bridge --from claude --to codex
 ```
 
 Migrate Codex skills to Claude Code:
 
 ```bash
-npx skill-bridge to-claude
+npx skill-bridge --from codex --to claude
 ```
 
 Preview all matching Estifie skills from Claude Code to Codex:
 
 ```bash
-npx skill-bridge to-codex --filter estifie --all --dry-run
+npx skill-bridge --from claude --to codex --filter estifie --all --dry-run
 ```
 
 Migrate all matching Codex skills to Claude Code:
 
 ```bash
-npx skill-bridge to-claude --filter "ios" --all --yes
+npx skill-bridge --from codex --to claude --filter "ios" --all --yes
 ```
 
 Use a custom source and target:
 
 ```bash
-npx skill-bridge to-codex --source ./claude-skills --target ./codex-skills
+npx skill-bridge --from claude --to codex --source ./claude-skills --target ./codex-skills
 ```
 
 Overwrite existing destination folders:
 
 ```bash
-npx skill-bridge to-claude --all --yes --overwrite
+npx skill-bridge --from codex --to claude --all --yes --overwrite
+```
+
+Skip existing destination folders in non-interactive runs:
+
+```bash
+npx skill-bridge --from claude --to codex --all --yes --on-conflict skip
 ```
 
 ## CLI
 
 ```text
-Usage: skill-bridge [options] [command]
+Usage: skill-bridge [options]
 
 Bidirectional CLI for migrating skills between Claude Code and Codex.
-
-Commands:
-  to-codex   Migrate Claude Code skills into Codex.
-  to-claude  Migrate Codex skills into Claude Code.
 ```
-
-Each direction command supports:
 
 ```text
 Options:
+  --from <platform>         Source platform: claude or codex.
+  --to <platform>           Target platform: claude or codex.
   -s, --source <path...>    Custom source skills directory or a single skill directory.
-  -t, --target <path>       Target skills directory.
+  -t, --target <path>       Target skills directory. Defaults to the selected target platform.
   --cwd <path>              Project directory used for project skill discovery.
   -a, --all                 Select every discovered skill without opening the selector.
   -f, --filter <query>      Filter discovered skills by name, description, scope, or relative path.
   -y, --yes                 Accept the migration confirmation prompt.
   --dry-run                 Show what would be migrated without writing files.
-  --overwrite               Replace existing destination skill folders.
-  --skip-existing           Skip skills whose destination folder already exists.
+  --overwrite               Overwrite every differing destination skill.
+  --skip-existing           Skip every existing destination skill.
+  --on-conflict <action>    Conflict policy: ask, skip, or overwrite.
   --no-personal             Do not scan personal source skills.
   --no-project              Do not scan project source skills.
   --no-codex-metadata       Do not create agents/openai.yaml when migrating to Codex.
@@ -119,7 +127,8 @@ Both Claude Code and Codex skills use folders with a required `SKILL.md`. Skill 
 3. Builds a target-friendly `description`, including Claude `when_to_use` text when present.
 4. Writes a minimal frontmatter block with `name` and `description`.
 5. Copies the rest of the skill folder.
-6. Reports source-specific fields or dynamic shell injections that may need manual review.
+6. Compares existing destination skills with SHA-256 checksums.
+7. Reports source-specific fields or dynamic shell injections that may need manual review.
 
 When migrating to Codex, Claude-specific frontmatter such as `allowed-tools`, `disable-model-invocation`, and `user-invocable` is not copied into `SKILL.md`.
 
@@ -139,6 +148,6 @@ bun run build
 Local CLI runs:
 
 ```bash
-bun run dev -- to-codex --filter estifie --all --dry-run
-bun run dev -- to-claude --all --dry-run
+bun run dev -- --from claude --to codex --filter estifie --all --dry-run
+bun run dev -- --from codex --to claude --all --dry-run
 ```

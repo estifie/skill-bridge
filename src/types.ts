@@ -44,9 +44,26 @@ export interface ImportOptions {
   skipExisting: boolean;
   createCodexMetadata: boolean;
   dryRun: boolean;
+  resolveConflict?: (conflict: ImportConflict) => Promise<ConflictAction>;
 }
 
-export type ImportStatus = "imported" | "skipped" | "would-import" | "would-skip";
+export type ConflictAction = "overwrite" | "skip" | "cancel";
+
+export interface ImportConflict {
+  candidate: SkillCandidate;
+  destinationDir: string;
+  identical: boolean;
+  sourceChecksum: string;
+  destinationChecksum: string;
+}
+
+export type ImportStatus =
+  | "imported"
+  | "overwritten"
+  | "skipped"
+  | "would-import"
+  | "would-overwrite"
+  | "would-skip";
 
 export interface ImportResult {
   candidate: SkillCandidate;
