@@ -1,37 +1,37 @@
 # Skill Bridge
 
-Bidirectional CLI for migrating skills between Claude Code and Codex.
+I use multiple agent tools side by side, and each one has its own skill system. Over time that meant I was constantly working with different skill sets, different instructions, and slightly different outputs depending on where I was running the task. Skill Bridge started as a small tool to solve that problem for myself: move skills between Claude Code and Codex without manually copying folders, rewriting frontmatter, or losing scripts and references.
 
-Skill Bridge discovers skill folders, lets you choose source and target platforms, search or select skills from a terminal UI, shows a migration plan, then copies each complete skill directory into the target platform. Supporting files such as scripts, references, examples, and assets are preserved.
+Skill Bridge is a bidirectional CLI for migrating skills between Claude Code and Codex. It discovers skill folders, lets you choose source and target platforms, supports large skill libraries with search and preview flows, checks destination conflicts with SHA-256 checksums, and copies complete skill directories safely.
 
-## Features
+## What It Does
 
-- Migrates between Claude Code and Codex with one command
-- Supports `--from claude --to codex` and `--from codex --to claude`
-- Discovers personal skills from `~/.claude/skills` and `~/.codex/skills`
-- Discovers project skills from `.claude/skills` and `.codex/skills`
-- Follows symlinked skill directories
-- Accepts custom source folders with `--source`
-- Starts interactive runs with a clear action menu
-- Supports search/filter, browse all, select all, and cancel flows
-- Copies the full skill directory, not just `SKILL.md`
-- Detects existing destination skills with SHA-256 checksums
-- Automatically skips identical destination skills
-- Asks whether to overwrite or skip differing destination skills
-- Supports overwrite all / skip all conflict decisions
-- Creates optional `agents/openai.yaml` metadata when migrating to Codex
-- Omits Codex-only `agents/openai.yaml` metadata when migrating to Claude Code
-- Supports dry runs, overwrite mode, and non-interactive migrations
+- Migrates Claude Code skills to Codex.
+- Migrates Codex skills to Claude Code.
+- Preserves full skill folders, including `scripts/`, `references/`, `assets/`, examples, and supporting files.
+- Reads personal skill folders from `~/.claude/skills` and `~/.codex/skills`.
+- Reads project skill folders from `.claude/skills` and `.codex/skills`.
+- Follows symlinked skill directories.
+- Supports custom source and target folders.
+- Provides an interactive terminal UI for browsing, searching, inspecting, and selecting skills.
+- Supports non-interactive scripted migrations with flags.
+- Detects destination conflicts with SHA-256 checksums.
+- Automatically skips identical destination skills.
+- Asks whether to overwrite or skip differing destination skills.
+- Supports overwrite all / skip all conflict decisions.
+- Creates optional `agents/openai.yaml` metadata when migrating to Codex.
+- Omits Codex-only `agents/openai.yaml` metadata when migrating to Claude Code.
+- Supports dry runs before writing anything.
 
 ## Installation
 
-Use Skill Bridge once without installing it:
+Run once without installing:
 
 ```bash
 npx skill-bridge
 ```
 
-Install it globally to run `skill-bridge` from any directory:
+Install globally to use `skill-bridge` from any directory:
 
 ```bash
 npm install -g skill-bridge
@@ -43,27 +43,59 @@ Then run:
 skill-bridge
 ```
 
-Update the global install later:
+Update later:
 
 ```bash
 npm update -g skill-bridge
 ```
 
-Remove it:
+Remove:
 
 ```bash
 npm uninstall -g skill-bridge
 ```
 
-## Usage
+## Quick Start
 
-Run the bridge:
+Start the interactive migration flow:
 
 ```bash
 skill-bridge
 ```
 
-Interactive mode starts by asking where skills should move from and to:
+Preview a Claude Code to Codex migration:
+
+```bash
+skill-bridge --from claude --to codex --all --dry-run
+```
+
+Preview only matching skills:
+
+```bash
+skill-bridge --from claude --to codex --filter estifie --all --dry-run
+```
+
+Migrate Codex skills to Claude Code:
+
+```bash
+skill-bridge --from codex --to claude
+```
+
+Run a non-interactive migration and skip destination conflicts:
+
+```bash
+skill-bridge --from claude --to codex --all --yes --on-conflict skip
+```
+
+Run a non-interactive migration and overwrite differing destination skills:
+
+```bash
+skill-bridge --from codex --to claude --all --yes --on-conflict overwrite
+```
+
+## Interactive Flow
+
+Skill Bridge asks where the migration should start:
 
 ```text
 Which platform do you want to migrate from?
@@ -72,9 +104,37 @@ Codex
 Cancel
 ```
 
-Then the skill picker starts with an action menu:
+Then it asks where the migrated skills should go:
 
 ```text
+Which platform do you want to migrate to?
+Codex
+Cancel
+```
+
+You can use default skill locations or provide a custom source folder:
+
+```text
+Where should I read source skills from?
+Default skill locations
+Custom folder
+Default locations plus custom folder
+Cancel
+```
+
+You can also choose a custom target folder:
+
+```text
+Where should I write migrated skills?
+Default Codex skills folder
+Custom folder
+Cancel
+```
+
+After discovery, the skill picker opens:
+
+```text
+How do you want to choose skills?
 Browse skills
 Search / filter skills
 Select all <count> skills
@@ -84,66 +144,144 @@ Cancel
 
 Search prompts support going back with an empty search.
 
-Migrate Claude Code skills to Codex:
+## Skill Selection
 
-```bash
-skill-bridge --from claude --to codex
-```
+### Browse Skills
 
-Migrate Codex skills to Claude Code:
+Opens a multi-select list. Use the keyboard shortcuts shown by Inquirer:
 
-```bash
-skill-bridge --from codex --to claude
-```
+- `space` selects or unselects a skill.
+- `a` toggles all visible skills.
+- `i` inverts the current selection.
+- `enter` confirms.
 
-Preview all matching Estifie skills from Claude Code to Codex:
+### Search / Filter Skills
 
-```bash
-skill-bridge --from claude --to codex --filter estifie --all --dry-run
-```
+Searches across:
 
-Migrate all matching Codex skills to Claude Code:
+- skill name
+- description
+- scope
+- relative source path
 
-```bash
-skill-bridge --from codex --to claude --filter "ios" --all --yes
-```
-
-Use a custom source and target:
-
-```bash
-skill-bridge --from claude --to codex --source ./claude-skills --target ./codex-skills
-```
-
-In interactive mode, Skill Bridge also asks where to read and write skills:
+After a search, Skill Bridge asks what to do with the matches:
 
 ```text
-Where should I read source skills from?
-Default skill locations
-Custom folder
-Default locations plus custom folder
-Cancel
-
-Where should I write migrated skills?
-Default Codex skills folder
-Custom folder
+Choose from <count> matching skills
+Select all <count> matching skills
+Search again
+Back
 Cancel
 ```
 
-Use `--source` for a custom source skill folder and `--target` for a custom destination folder in scripts.
+### View Skill Details
 
-Overwrite existing destination folders:
+Lets you inspect a skill before choosing what to migrate. The preview shows:
+
+- platform
+- scope
+- source path
+- description
+- first 40 lines of `SKILL.md`
+
+## Custom Folders
+
+Use `--source` to read skills from a custom folder:
 
 ```bash
-skill-bridge --from codex --to claude --all --yes --overwrite
+skill-bridge --from claude --to codex --source ./claude-skills
 ```
 
-Skip existing destination folders in non-interactive runs:
+Use `--target` to write skills into a custom folder:
+
+```bash
+skill-bridge --from claude --to codex --target ./codex-skills
+```
+
+Use both for fully explicit migrations:
+
+```bash
+skill-bridge \
+  --from claude \
+  --to codex \
+  --source ./claude-skills \
+  --target ./codex-skills \
+  --all \
+  --dry-run
+```
+
+Disable default personal and project discovery when using a custom source:
+
+```bash
+skill-bridge \
+  --from claude \
+  --to codex \
+  --source ./claude-skills \
+  --no-personal \
+  --no-project
+```
+
+## Conflict Handling
+
+When a destination skill folder already exists, Skill Bridge compares the expected migrated output against the existing destination using SHA-256 checksums.
+
+If the checksums match, the skill is skipped automatically:
+
+```text
+Destination already contains the same skill (checksum matched).
+```
+
+If the destination exists but differs, interactive mode asks:
+
+```text
+Overwrite this skill
+Skip this skill
+Overwrite this and all remaining conflicts
+Skip this and all remaining conflicts
+Cancel migration
+```
+
+For non-interactive runs, choose a policy:
 
 ```bash
 skill-bridge --from claude --to codex --all --yes --on-conflict skip
 ```
 
-## CLI
+```bash
+skill-bridge --from claude --to codex --all --yes --on-conflict overwrite
+```
+
+Shortcuts:
+
+```bash
+skill-bridge --from claude --to codex --all --yes --skip-existing
+skill-bridge --from claude --to codex --all --yes --overwrite
+```
+
+Dry runs show whether each skill would import, skip, or overwrite:
+
+```bash
+skill-bridge --from claude --to codex --filter estifie --all --dry-run
+```
+
+## Platform Behavior
+
+### Claude Code -> Codex
+
+- Reads from `~/.claude/skills` and project `.claude/skills` by default.
+- Writes to `~/.codex/skills` by default.
+- Converts `SKILL.md` frontmatter to Codex-friendly `name` and `description`.
+- Drops Claude-specific frontmatter such as `allowed-tools`, `disable-model-invocation`, and `user-invocable`.
+- Creates `agents/openai.yaml` unless `--no-codex-metadata` is used.
+
+### Codex -> Claude Code
+
+- Reads from `~/.codex/skills` and project `.codex/skills` by default.
+- Writes to `~/.claude/skills` by default.
+- Preserves the skill body and supporting resources.
+- Does not copy Codex-only `agents/openai.yaml` metadata.
+
+## CLI Reference
 
 ```text
 Usage: skill-bridge [options]
@@ -170,21 +308,36 @@ Options:
   --no-codex-metadata       Do not create agents/openai.yaml when migrating to Codex.
 ```
 
-## Conversion Behavior
+## Examples
 
-Both Claude Code and Codex skills use folders with a required `SKILL.md`. Skill Bridge keeps migrations conservative:
+Migrate one searched set from Claude Code to Codex:
 
-1. Reads the source `SKILL.md`.
-2. Normalizes the skill name to lowercase kebab case.
-3. Builds a target-friendly `description`, including Claude `when_to_use` text when present.
-4. Writes a minimal frontmatter block with `name` and `description`.
-5. Copies the rest of the skill folder.
-6. Compares existing destination skills with SHA-256 checksums.
-7. Reports source-specific fields or dynamic shell injections that may need manual review.
+```bash
+skill-bridge --from claude --to codex --filter "ios" --all --dry-run
+```
 
-When migrating to Codex, Claude-specific frontmatter such as `allowed-tools`, `disable-model-invocation`, and `user-invocable` is not copied into `SKILL.md`.
+Migrate from a project-local Claude skill folder:
 
-When migrating to Claude Code, Codex-only `agents/openai.yaml` metadata is not copied.
+```bash
+skill-bridge \
+  --from claude \
+  --to codex \
+  --source ./.claude/skills \
+  --target ./.codex/skills \
+  --all
+```
+
+Migrate Codex skills back to Claude Code and overwrite conflicts:
+
+```bash
+skill-bridge --from codex --to claude --all --yes --overwrite
+```
+
+Use Codex output without generating `agents/openai.yaml`:
+
+```bash
+skill-bridge --from claude --to codex --all --no-codex-metadata
+```
 
 ## Development
 
@@ -197,7 +350,13 @@ bun test
 bun run build
 ```
 
-Local CLI runs:
+Run locally:
+
+```bash
+bun run dev
+```
+
+Run local smoke tests:
 
 ```bash
 bun run dev -- --from claude --to codex --filter estifie --all --dry-run
