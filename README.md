@@ -75,11 +75,14 @@ Cancel
 Then the skill picker starts with an action menu:
 
 ```text
+Browse skills
 Search / filter skills
-Browse all skills
-Select all skills
+Select all <count> skills
+View skill details
 Cancel
 ```
+
+Search prompts support going back with an empty search.
 
 Migrate Claude Code skills to Codex:
 
@@ -110,6 +113,23 @@ Use a custom source and target:
 ```bash
 skill-bridge --from claude --to codex --source ./claude-skills --target ./codex-skills
 ```
+
+In interactive mode, Skill Bridge also asks where to read and write skills:
+
+```text
+Where should I read source skills from?
+Default skill locations
+Custom folder
+Default locations plus custom folder
+Cancel
+
+Where should I write migrated skills?
+Default Codex skills folder
+Custom folder
+Cancel
+```
+
+Use `--source` for a custom source skill folder and `--target` for a custom destination folder in scripts.
 
 Overwrite existing destination folders:
 
