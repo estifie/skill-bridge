@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -35,6 +35,29 @@ describe("discoverSkills", () => {
       "personal-skill",
       "project-skill",
     ]);
+  });
+
+  it("follows symlinked skill directories", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "csk-discover-link-"));
+    const homeDir = path.join(tempDir, "home");
+    const realSkill = path.join(tempDir, "real-skills", "estifie-ios");
+    const linkedSkill = path.join(homeDir, ".claude", "skills", "estifie-ios");
+
+    await mkdir(path.dirname(linkedSkill), { recursive: true });
+    await mkdir(realSkill, { recursive: true });
+    await writeSkill(path.join(realSkill, "SKILL.md"), "estifie-ios");
+    await symlink(realSkill, linkedSkill, "dir");
+
+    const skills = await discoverSkills({
+      cwd: tempDir,
+      homeDir,
+      includePersonal: true,
+      includeProject: false,
+      sources: [],
+    });
+
+    expect(skills.map((skill) => skill.name)).toEqual(["estifie-ios"]);
+    expect(skills[0]?.sourceDir).toBe(linkedSkill);
   });
 });
 

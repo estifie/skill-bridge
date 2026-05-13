@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { SkillCandidate } from "./types.js";
 
 export function filterSkills(candidates: SkillCandidate[], query: string): SkillCandidate[] {
@@ -16,11 +17,16 @@ export function filterSkills(candidates: SkillCandidate[], query: string): Skill
       candidate.name,
       candidate.description ?? "",
       candidate.scope,
-      candidate.sourceDir,
+      relativeSkillPath(candidate),
     ]
       .join(" ")
       .toLowerCase();
 
     return terms.every((term) => haystack.includes(term));
   });
+}
+
+function relativeSkillPath(candidate: SkillCandidate): string {
+  const relative = path.relative(candidate.rootDir, candidate.sourceDir);
+  return relative && !relative.startsWith("..") ? relative : path.basename(candidate.sourceDir);
 }

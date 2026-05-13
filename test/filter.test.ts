@@ -6,7 +6,7 @@ describe("filterSkills", () => {
   const skills: SkillCandidate[] = [
     candidate("react-ui", "Builds React interfaces.", "personal", "/skills/react-ui"),
     candidate("postgres-tuning", "Optimizes database queries.", "project", "/repo/.claude/skills/postgres-tuning"),
-    candidate("incident-review", "Reviews production incidents.", "custom", "/tmp/ops/incident-review"),
+    candidate("incident-review", "Reviews production incidents.", "custom", "/tmp/ops/incident-review", "/tmp/ops"),
   ];
 
   it("matches skill names and descriptions", () => {
@@ -16,7 +16,8 @@ describe("filterSkills", () => {
 
   it("matches scope and source path", () => {
     expect(filterSkills(skills, "project").map((skill) => skill.name)).toEqual(["postgres-tuning"]);
-    expect(filterSkills(skills, "tmp ops").map((skill) => skill.name)).toEqual(["incident-review"]);
+    expect(filterSkills(skills, "incident-review").map((skill) => skill.name)).toEqual(["incident-review"]);
+    expect(filterSkills(skills, "estifie").map((skill) => skill.name)).toEqual([]);
   });
 
   it("returns all skills for an empty query", () => {
@@ -29,6 +30,7 @@ function candidate(
   description: string,
   scope: SkillCandidate["scope"],
   sourceDir: string,
+  rootDir = "/skills",
 ): SkillCandidate {
   return {
     id: `${scope}:${name}`,
@@ -36,7 +38,7 @@ function candidate(
     description,
     sourceDir,
     skillFile: `${sourceDir}/SKILL.md`,
-    rootDir: "/skills",
+    rootDir,
     scope,
   };
 }

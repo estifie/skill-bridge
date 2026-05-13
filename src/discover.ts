@@ -69,8 +69,13 @@ async function findSkillsInRoot(rootDir: string, scope: SkillScope, maxDepth: nu
     const entries = await readdir(currentDir, { withFileTypes: true });
     await Promise.all(
       entries
-        .filter((entry) => entry.isDirectory() && !ignoredDirectories.has(entry.name))
-        .map((entry) => visit(path.join(currentDir, entry.name), depth + 1)),
+        .filter((entry) => !ignoredDirectories.has(entry.name))
+        .map(async (entry) => {
+          const entryPath = path.join(currentDir, entry.name);
+          if (entry.isDirectory() || (entry.isSymbolicLink() && await isDirectory(entryPath))) {
+            await visit(entryPath, depth + 1);
+          }
+        }),
     );
   }
 
@@ -126,6 +131,14 @@ export async function directoryHasChildren(dir: string): Promise<boolean> {
 
     const entries = await readdir(dir);
     return entries.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function isDirectory(input: string): Promise<boolean> {
+  try {
+    return (await stat(input)).isDirectory();
   } catch {
     return false;
   }

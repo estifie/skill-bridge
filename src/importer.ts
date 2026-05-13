@@ -47,6 +47,7 @@ export async function importSkill(candidate: SkillCandidate, options: ImportOpti
 
   await cp(candidate.sourceDir, destinationDir, {
     recursive: true,
+    dereference: true,
     filter: (source) => !copyIgnoreNames.has(path.basename(source)),
   });
 
