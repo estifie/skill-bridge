@@ -24,13 +24,22 @@ Run directly with npm:
 npx claude-skills-to-codex
 ```
 
+Interactive mode starts with an action menu:
+
+```text
+Search / filter skills
+Browse all skills
+Select all skills
+Cancel
+```
+
 Import every discovered skill without opening the selector:
 
 ```bash
 npx claude-skills-to-codex --all --yes
 ```
 
-Search before selecting when you have a large skill library:
+Filter from the command line before selecting:
 
 ```bash
 npx claude-skills-to-codex --filter "react ui"

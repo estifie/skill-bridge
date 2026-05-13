@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { checkbox, confirm, input } from "@inquirer/prompts";
+import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import chalk from "chalk";
 import { Command, Option } from "commander";
 import { discoverSkills } from "./discover.js";
@@ -117,33 +117,148 @@ interface SelectOptions {
   filterQuery?: string;
 }
 
+type SelectionAction = "search" | "browse" | "all" | "cancel";
+type SearchResultAction = "choose" | "all" | "again" | "back" | "cancel";
+
 async function selectCandidates(candidates: SkillCandidate[], options: SelectOptions): Promise<SkillCandidate[]> {
-  const filteredCandidates = await resolveFilter(candidates, options.filterQuery);
+  if (options.filterQuery !== undefined) {
+    const filteredCandidates = filterSkills(candidates, options.filterQuery);
 
-  if (filteredCandidates.length === 0) {
-    console.log(chalk.yellow("No skills matched the current filter."));
-    return [];
-  }
+    if (filteredCandidates.length === 0) {
+      console.log(chalk.yellow("No skills matched the current filter."));
+      return [];
+    }
 
-  if (filteredCandidates.length !== candidates.length) {
-    console.log(
-      chalk.dim(`Filtered to ${filteredCandidates.length} of ${candidates.length} skill${candidates.length === 1 ? "" : "s"}.`),
-    );
+    if (filteredCandidates.length !== candidates.length) {
+      printFilteredCount(filteredCandidates.length, candidates.length);
+    }
+
+    return options.selectAll ? filteredCandidates : selectFromList(filteredCandidates);
   }
 
   if (options.selectAll) {
-    return filteredCandidates;
+    return candidates;
   }
 
   if (!process.stdin.isTTY) {
     throw new Error("Interactive selection requires a TTY. Use --all and optionally --filter for non-interactive runs.");
   }
 
+  return interactiveSelection(candidates);
+}
+
+async function interactiveSelection(candidates: SkillCandidate[]): Promise<SkillCandidate[]> {
+  while (true) {
+    const action = await select<SelectionAction>({
+      message: "How do you want to choose skills?",
+      choices: [
+        {
+          name: "Search / filter skills",
+          value: "search",
+          description: "Find skills by name, description, scope, or relative path.",
+        },
+        {
+          name: `Browse all ${candidates.length} skills`,
+          value: "browse",
+          description: "Open the full multi-select list.",
+        },
+        {
+          name: `Select all ${candidates.length} skills`,
+          value: "all",
+          description: "Import every discovered skill.",
+        },
+        {
+          name: "Cancel",
+          value: "cancel",
+        },
+      ],
+    });
+
+    if (action === "all") {
+      return candidates;
+    }
+
+    if (action === "browse") {
+      return selectFromList(candidates);
+    }
+
+    if (action === "cancel") {
+      return [];
+    }
+
+    const selected = await searchSelection(candidates);
+    if (selected !== undefined) {
+      return selected;
+    }
+  }
+}
+
+async function searchSelection(candidates: SkillCandidate[]): Promise<SkillCandidate[] | undefined> {
+  while (true) {
+    const query = await input({
+      message: "Search skills",
+      default: "",
+    });
+
+    const filteredCandidates = filterSkills(candidates, query);
+
+    if (filteredCandidates.length === 0) {
+      console.log(chalk.yellow("No skills matched that search."));
+      continue;
+    }
+
+    printFilteredCount(filteredCandidates.length, candidates.length);
+
+    const action = await select<SearchResultAction>({
+      message: "What should happen with these matches?",
+      choices: [
+        {
+          name: `Choose from ${filteredCandidates.length} matching skills`,
+          value: "choose",
+        },
+        {
+          name: `Select all ${filteredCandidates.length} matching skills`,
+          value: "all",
+        },
+        {
+          name: "Search again",
+          value: "again",
+        },
+        {
+          name: "Back",
+          value: "back",
+        },
+        {
+          name: "Cancel",
+          value: "cancel",
+        },
+      ],
+    });
+
+    if (action === "choose") {
+      return selectFromList(filteredCandidates);
+    }
+
+    if (action === "all") {
+      return filteredCandidates;
+    }
+
+    if (action === "back") {
+      return undefined;
+    }
+
+    if (action === "cancel") {
+      return [];
+    }
+  }
+}
+
+async function selectFromList(candidates: SkillCandidate[]): Promise<SkillCandidate[]> {
   const selectedIds = await checkbox<string>({
     message: "Select skills to import. Space selects, a toggles all, i inverts, enter confirms.",
     pageSize: 12,
     required: false,
-    choices: filteredCandidates.map((candidate) => ({
+    choices: candidates.map((candidate) => ({
       name: `${candidate.name} ${chalk.dim(`[${candidate.scope}]`)}`,
       value: candidate.id,
       description: candidate.description ?? candidate.sourceDir,
@@ -151,24 +266,11 @@ async function selectCandidates(candidates: SkillCandidate[], options: SelectOpt
   });
 
   const selected = new Set(selectedIds);
-  return filteredCandidates.filter((candidate) => selected.has(candidate.id));
+  return candidates.filter((candidate) => selected.has(candidate.id));
 }
 
-async function resolveFilter(candidates: SkillCandidate[], filterQuery?: string): Promise<SkillCandidate[]> {
-  if (filterQuery !== undefined) {
-    return filterSkills(candidates, filterQuery);
-  }
-
-  if (candidates.length <= 50 || !process.stdin.isTTY) {
-    return candidates;
-  }
-
-  const query = await input({
-    message: "Search skills first. Match name, description, scope, or path. Leave blank to browse all.",
-    default: "",
-  });
-
-  return filterSkills(candidates, query);
+function printFilteredCount(filteredCount: number, totalCount: number): void {
+  console.log(chalk.dim(`Filtered to ${filteredCount} of ${totalCount} skill${totalCount === 1 ? "" : "s"}.`));
 }
 
 function printHeader(): void {
