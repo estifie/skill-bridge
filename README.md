@@ -23,12 +23,44 @@ Skill Bridge discovers skill folders, lets you choose source and target platform
 - Omits Codex-only `agents/openai.yaml` metadata when migrating to Claude Code
 - Supports dry runs, overwrite mode, and non-interactive migrations
 
+## Installation
+
+Use Skill Bridge once without installing it:
+
+```bash
+npx skill-bridge
+```
+
+Install it globally to run `skill-bridge` from any directory:
+
+```bash
+npm install -g skill-bridge
+```
+
+Then run:
+
+```bash
+skill-bridge
+```
+
+Update the global install later:
+
+```bash
+npm update -g skill-bridge
+```
+
+Remove it:
+
+```bash
+npm uninstall -g skill-bridge
+```
+
 ## Usage
 
 Run the bridge:
 
 ```bash
-npx skill-bridge
+skill-bridge
 ```
 
 Interactive mode starts by asking where skills should move from and to:
@@ -52,43 +84,43 @@ Cancel
 Migrate Claude Code skills to Codex:
 
 ```bash
-npx skill-bridge --from claude --to codex
+skill-bridge --from claude --to codex
 ```
 
 Migrate Codex skills to Claude Code:
 
 ```bash
-npx skill-bridge --from codex --to claude
+skill-bridge --from codex --to claude
 ```
 
 Preview all matching Estifie skills from Claude Code to Codex:
 
 ```bash
-npx skill-bridge --from claude --to codex --filter estifie --all --dry-run
+skill-bridge --from claude --to codex --filter estifie --all --dry-run
 ```
 
 Migrate all matching Codex skills to Claude Code:
 
 ```bash
-npx skill-bridge --from codex --to claude --filter "ios" --all --yes
+skill-bridge --from codex --to claude --filter "ios" --all --yes
 ```
 
 Use a custom source and target:
 
 ```bash
-npx skill-bridge --from claude --to codex --source ./claude-skills --target ./codex-skills
+skill-bridge --from claude --to codex --source ./claude-skills --target ./codex-skills
 ```
 
 Overwrite existing destination folders:
 
 ```bash
-npx skill-bridge --from codex --to claude --all --yes --overwrite
+skill-bridge --from codex --to claude --all --yes --overwrite
 ```
 
 Skip existing destination folders in non-interactive runs:
 
 ```bash
-npx skill-bridge --from claude --to codex --all --yes --on-conflict skip
+skill-bridge --from claude --to codex --all --yes --on-conflict skip
 ```
 
 ## CLI
