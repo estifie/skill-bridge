@@ -1,14 +1,14 @@
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { readFile } from "node:fs/promises";
-import { checkbox, confirm, input, select } from "@inquirer/prompts";
+import { confirm, select } from "@inquirer/prompts";
 import chalk from "chalk";
 import { Command, InvalidArgumentError, Option } from "commander";
 import { discoverSkills } from "./discover.js";
 import { filterSkills } from "./filter.js";
 import { importSkills } from "./importer.js";
 import { resolvePath } from "./paths.js";
+import { skillSelector } from "./skillSelector.js";
 import type { ConflictAction, ImportConflict, ImportResult, SkillCandidate, SkillPlatform } from "./types.js";
 
 interface BridgeOptions {
@@ -43,11 +43,9 @@ interface SelectOptions {
 }
 
 type PlatformChoice = SkillPlatform | "cancel";
-type SelectionAction = "browse" | "search" | "all" | "details" | "cancel";
-type SearchResultAction = "choose" | "all" | "again" | "back" | "cancel";
+type SelectionAction = "browse" | "all" | "cancel";
 type ConflictPromptAction = "overwrite" | "skip" | "overwrite-all" | "skip-all" | "cancel";
 type ConflictPolicy = "ask" | "skip" | "overwrite";
-type SelectionListValue = string | "__back__" | "__details__";
 
 const platformLabels: Record<SkillPlatform, string> = {
   claude: "Claude Code",
@@ -91,12 +89,13 @@ async function runMigration(options: BridgeOptions): Promise<void> {
   console.log(chalk.dim(`Migrate ${config.sourceLabel} skills into ${config.targetLabel}.`));
   console.log("");
 
+  const hasCustomSources = (options.source?.length ?? 0) > 0;
   const candidates = await discoverSkills({
     platform: config.sourcePlatform,
     cwd,
     homeDir,
-    includePersonal: options.personal ?? true,
-    includeProject: options.project ?? true,
+    includePersonal: hasCustomSources ? false : options.personal ?? true,
+    includeProject: hasCustomSources ? false : options.project ?? true,
     sources: options.source ?? [],
   });
 
@@ -233,7 +232,15 @@ async function selectCandidates(candidates: SkillCandidate[], options: SelectOpt
       printFilteredCount(filteredCandidates.length, candidates.length);
     }
 
-    return options.selectAll ? filteredCandidates : selectFromList(filteredCandidates, candidates);
+    if (options.selectAll) {
+      return filteredCandidates;
+    }
+
+    if (!process.stdin.isTTY) {
+      throw new Error("Interactive selection requires a TTY. Use --all with --filter for non-interactive runs.");
+    }
+
+    return await selectFromList(filteredCandidates) ?? [];
   }
 
   if (options.selectAll) {
@@ -255,22 +262,12 @@ async function interactiveSelection(candidates: SkillCandidate[]): Promise<Skill
         {
           name: "Browse skills",
           value: "browse",
-          description: "Open the full multi-select list.",
-        },
-        {
-          name: "Search / filter skills",
-          value: "search",
-          description: "Find skills by name, description, scope, or relative path.",
+          description: "Open the searchable skill list.",
         },
         {
           name: `Select all ${candidates.length} skills`,
           value: "all",
           description: "Migrate every discovered skill.",
-        },
-        {
-          name: "View skill details",
-          value: "details",
-          description: "Inspect a skill before choosing what to migrate.",
         },
         {
           name: "Cancel",
@@ -284,81 +281,11 @@ async function interactiveSelection(candidates: SkillCandidate[]): Promise<Skill
     }
 
     if (action === "browse") {
-      return selectFromList(candidates, candidates);
-    }
-
-    if (action === "cancel") {
-      return [];
-    }
-
-    if (action === "details") {
-      await inspectSkillDetails(candidates);
+      const selected = await selectFromList(candidates);
+      if (selected !== undefined) {
+        return selected;
+      }
       continue;
-    }
-
-    const selected = await searchSelection(candidates);
-    if (selected !== undefined) {
-      return selected;
-    }
-  }
-}
-
-async function searchSelection(candidates: SkillCandidate[]): Promise<SkillCandidate[] | undefined> {
-  while (true) {
-    const query = await input({
-      message: "Search skills (leave blank to go back)",
-      default: "",
-    });
-
-    if (query.trim().length === 0) {
-      return undefined;
-    }
-
-    const filteredCandidates = filterSkills(candidates, query);
-
-    if (filteredCandidates.length === 0) {
-      console.log(chalk.yellow("No skills matched that search."));
-      continue;
-    }
-
-    printFilteredCount(filteredCandidates.length, candidates.length);
-
-    const action = await select<SearchResultAction>({
-      message: "What should happen with these matches?",
-      choices: [
-        {
-          name: `Choose from ${filteredCandidates.length} matching skills`,
-          value: "choose",
-        },
-        {
-          name: `Select all ${filteredCandidates.length} matching skills`,
-          value: "all",
-        },
-        {
-          name: "Search again",
-          value: "again",
-        },
-        {
-          name: "Back",
-          value: "back",
-        },
-        {
-          name: "Cancel",
-          value: "cancel",
-        },
-      ],
-    });
-
-    if (action === "choose") {
-      return selectFromList(filteredCandidates, candidates);
-    }
-
-    if (action === "all") {
-      return filteredCandidates;
-    }
-
-    if (action === "back") {
-      return undefined;
     }
 
     if (action === "cancel") {
@@ -367,113 +294,19 @@ async function searchSelection(candidates: SkillCandidate[]): Promise<SkillCandi
   }
 }
 
-async function inspectSkillDetails(candidates: SkillCandidate[], initialMatches?: SkillCandidate[]): Promise<void> {
-  const matches = initialMatches ?? await searchSkillsForDetails(candidates);
-  if (matches.length === 0) {
-    return;
-  }
-
-  const choices = [
-    ...matches.slice(0, 50).map((skill) => ({
-      name: `${skill.name} ${chalk.dim(`[${skill.scope}]`)}`,
-      value: skill.id,
-      description: skill.description ?? skill.sourceDir,
-    })),
-    {
-      name: "Back",
-      value: "__back__",
-    },
-  ];
-
-  const candidate = await select<string>({
-    message: "Choose a skill to inspect",
-    pageSize: 12,
-    choices,
-  });
-  if (candidate === "__back__") {
-    return;
-  }
-
-  const skill = matches.find((match) => match.id === candidate);
-  if (!skill) {
-    return;
-  }
-
-  const markdown = await readFile(skill.skillFile, "utf8");
-  const preview = markdown.split(/\r?\n/).slice(0, 40).join("\n");
-
-  console.log("");
-  console.log(chalk.bold(skill.name));
-  console.log(`${chalk.dim("Platform")} ${platformLabels[skill.platform]}`);
-  console.log(`${chalk.dim("Scope")} ${skill.scope}`);
-  console.log(`${chalk.dim("Path")} ${skill.sourceDir}`);
-  if (skill.description) {
-    console.log(`${chalk.dim("Description")} ${skill.description}`);
-  }
-  console.log("");
-  console.log(chalk.dim("SKILL.md preview"));
-  console.log(preview);
-  if (markdown.split(/\r?\n/).length > 40) {
-    console.log(chalk.dim("... preview truncated"));
-  }
-  console.log("");
-}
-
-async function searchSkillsForDetails(candidates: SkillCandidate[]): Promise<SkillCandidate[]> {
-  const query = await input({
-    message: "Search for a skill to inspect (leave blank to go back)",
-    default: "",
+async function selectFromList(candidates: SkillCandidate[]): Promise<SkillCandidate[] | undefined> {
+  const selectedIds = await skillSelector({
+    message: "Select skills to migrate",
+    candidates,
+    pageSize: 14,
   });
 
-  if (query.trim().length === 0) {
-    return [];
+  if (selectedIds === undefined) {
+    return undefined;
   }
 
-  const matches = filterSkills(candidates, query);
-  if (matches.length === 0) {
-    console.log(chalk.yellow("No skills matched that search."));
-    return [];
-  }
-
-  return matches;
-}
-
-async function selectFromList(candidates: SkillCandidate[], allCandidates: SkillCandidate[]): Promise<SkillCandidate[]> {
-  while (true) {
-    const selectedIds = await checkbox<SelectionListValue>({
-    message: "Select skills to migrate. Space selects, a toggles all, i inverts, enter confirms.",
-    pageSize: 12,
-    required: false,
-      choices: [
-        {
-          name: "Back",
-          value: "__back__",
-        },
-        {
-          name: "View skill details",
-          value: "__details__",
-          description: "Inspect a skill, then return to this list.",
-        },
-        ...candidates.map((candidate) => ({
-          name: `${candidate.name} ${chalk.dim(`[${candidate.scope}]`)}`,
-          value: candidate.id,
-          description: candidate.description ?? candidate.sourceDir,
-        })),
-      ],
-    });
-
-    const selected = new Set(selectedIds);
-    if (selected.has("__back__")) {
-      return [];
-    }
-
-    if (selected.has("__details__")) {
-      await inspectSkillDetails(allCandidates, candidates);
-      continue;
-    }
-
-    return candidates.filter((candidate) => selected.has(candidate.id));
-  }
+  const selected = new Set(selectedIds);
+  return candidates.filter((candidate) => selected.has(candidate.id));
 }
 
 function createConflictResolver(options: BridgeOptions): ((conflict: ImportConflict) => Promise<ConflictAction>) | undefined {

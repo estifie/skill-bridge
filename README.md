@@ -117,31 +117,31 @@ Skill Bridge uses the default skill folders unless you pass `--source` or `--tar
 ```text
 How do you want to choose skills?
 Browse skills
-Search / filter skills
 Select all <count> skills
-View skill details
 Cancel
 ```
-
-Search prompts support going back with an empty search.
 
 ## Skill Selection
 
 ### Browse Skills
 
-Opens a multi-select list. Use the keyboard shortcuts shown by Inquirer:
+Opens the main multi-select list with an inline search field. Type directly in the picker to filter the visible skills:
 
-- `space` selects or unselects a skill.
-- `a` toggles all visible skills.
-- `i` inverts the current selection.
-- `enter` confirms.
+```text
+Search: auth
+[ ] auth-hardening [personal]
+[x] oauth-review [project]
+Back
+```
 
-The list also includes:
+- arrow keys move the active row.
+- typing filters the list immediately.
+- `space` selects or unselects the active skill.
+- `enter` confirms the current selection.
+- `ctrl+u` clears the search.
+- `Back` returns to the previous picker menu.
 
-- `Back` to return to the previous picker menu.
-- `View skill details` to inspect a skill and then return to the list.
-
-### Search / Filter Skills
+### Search / Filter
 
 Searches across:
 
@@ -150,29 +150,16 @@ Searches across:
 - scope
 - relative source path
 
-After a search, Skill Bridge asks what to do with the matches:
+Search lives inside Browse and updates the visible skills as you type:
 
 ```text
-Choose from <count> matching skills
-Select all <count> matching skills
-Search again
-Back
-Cancel
+[ ] auth-hardening [personal]
+[ ] auth-session-review [project]
 ```
-
-### View Skill Details
-
-Lets you inspect a skill before choosing what to migrate. The preview shows:
-
-- platform
-- scope
-- source path
-- description
-- first 40 lines of `SKILL.md`
 
 ## Custom Folders
 
-Use `--source` to read skills from a custom folder:
+Use `--source` to read skills from a custom folder instead of the default personal and project locations:
 
 ```bash
 skill-bridge --from claude --to codex --source ./claude-skills
