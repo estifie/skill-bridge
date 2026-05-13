@@ -164,9 +164,9 @@ function printResults(results: ImportResult[]): void {
   }
 
   console.log("");
-  console.log(
-    `${chalk.green(String(imported.length))} imported, ${chalk.yellow(String(skipped.length))} skipped.`,
-  );
+  const importLabel = imported.some((result) => result.status === "would-import") ? "would import" : "imported";
+  const skipLabel = skipped.some((result) => result.status === "would-skip") ? "would skip" : "skipped";
+  console.log(`${chalk.green(String(imported.length))} ${importLabel}, ${chalk.yellow(String(skipped.length))} ${skipLabel}.`);
 }
 
 function relativeOrAbsolute(input: string): string {
