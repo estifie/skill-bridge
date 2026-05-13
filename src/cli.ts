@@ -34,9 +34,6 @@ interface MigrationConfig {
   targetPlatform: SkillPlatform;
   sourceLabel: string;
   targetLabel: string;
-  sources: string[];
-  includePersonal: boolean;
-  includeProject: boolean;
   targetDir: string;
 }
 
@@ -46,12 +43,11 @@ interface SelectOptions {
 }
 
 type PlatformChoice = SkillPlatform | "cancel";
-type SourceLocationChoice = "default" | "custom" | "both" | "cancel";
-type TargetLocationChoice = "default" | "custom" | "cancel";
 type SelectionAction = "browse" | "search" | "all" | "details" | "cancel";
 type SearchResultAction = "choose" | "all" | "again" | "back" | "cancel";
 type ConflictPromptAction = "overwrite" | "skip" | "overwrite-all" | "skip-all" | "cancel";
 type ConflictPolicy = "ask" | "skip" | "overwrite";
+type SelectionListValue = string | "__back__" | "__details__";
 
 const platformLabels: Record<SkillPlatform, string> = {
   claude: "Claude Code",
@@ -99,9 +95,9 @@ async function runMigration(options: BridgeOptions): Promise<void> {
     platform: config.sourcePlatform,
     cwd,
     homeDir,
-    includePersonal: config.includePersonal,
-    includeProject: config.includeProject,
-    sources: config.sources,
+    includePersonal: options.personal ?? true,
+    includeProject: options.project ?? true,
+    sources: options.source ?? [],
   });
 
   if (candidates.length === 0) {
@@ -155,7 +151,6 @@ async function runMigration(options: BridgeOptions): Promise<void> {
 }
 
 async function resolveMigrationConfig(options: BridgeOptions, cwd: string, homeDir: string): Promise<MigrationConfig> {
-  const interactiveSetup = options.from === undefined || options.to === undefined;
   const sourcePlatform = options.from ?? await promptSourcePlatform();
   const targetPlatform = options.to ?? await promptTargetPlatform(sourcePlatform);
 
@@ -163,23 +158,13 @@ async function resolveMigrationConfig(options: BridgeOptions, cwd: string, homeD
     throw new Error("--from and --to must be different platforms.");
   }
 
-  const sourceDiscovery = interactiveSetup && options.source === undefined
-    ? await promptSourceDiscovery(sourcePlatform, cwd, homeDir)
-    : {
-      sources: options.source ?? [],
-      includePersonal: options.personal ?? true,
-      includeProject: options.project ?? true,
-    };
-  const targetDir = interactiveSetup && options.target === undefined
-    ? await promptTargetDir(targetPlatform, cwd, homeDir)
-    : resolvePath(options.target ?? defaultTargetDir(targetPlatform), cwd, homeDir);
+  const targetDir = resolvePath(options.target ?? defaultTargetDir(targetPlatform), cwd, homeDir);
 
   return {
     sourcePlatform,
     targetPlatform,
     sourceLabel: platformLabels[sourcePlatform],
     targetLabel: platformLabels[targetPlatform],
-    ...sourceDiscovery,
     targetDir,
   };
 }
@@ -235,96 +220,6 @@ async function promptTargetPlatform(sourcePlatform: SkillPlatform): Promise<Skil
   return choice;
 }
 
-async function promptSourceDiscovery(
-  sourcePlatform: SkillPlatform,
-  cwd: string,
-  homeDir: string,
-): Promise<{ sources: string[]; includePersonal: boolean; includeProject: boolean }> {
-  const defaultPersonal = defaultTargetDir(sourcePlatform);
-  const projectDir = `${platformDirectory(sourcePlatform)}/skills`;
-  const choice = await select<SourceLocationChoice>({
-    message: "Where should I read source skills from?",
-    choices: [
-      {
-        name: "Default skill locations",
-        value: "default",
-        description: `${defaultPersonal} and project ${projectDir}`,
-      },
-      {
-        name: "Custom folder",
-        value: "custom",
-        description: "Use a folder you provide instead of the default locations.",
-      },
-      {
-        name: "Default locations plus custom folder",
-        value: "both",
-      },
-      {
-        name: "Cancel",
-        value: "cancel",
-      },
-    ],
-  });
-
-  if (choice === "cancel") {
-    throw new Error("Migration cancelled.");
-  }
-
-  if (choice === "default") {
-    return { sources: [], includePersonal: true, includeProject: true };
-  }
-
-  const customSource = await input({
-    message: "Custom source skill folder",
-    default: cwd,
-    validate: (value) => value.trim().length > 0 || "Enter a source folder path.",
-  });
-
-  return {
-    sources: [resolvePath(customSource, cwd, homeDir)],
-    includePersonal: choice === "both",
-    includeProject: choice === "both",
-  };
-}
-
-async function promptTargetDir(targetPlatform: SkillPlatform, cwd: string, homeDir: string): Promise<string> {
-  const defaultDir = defaultTargetDir(targetPlatform);
-  const choice = await select<TargetLocationChoice>({
-    message: "Where should I write migrated skills?",
-    choices: [
-      {
-        name: `Default ${platformLabels[targetPlatform]} skills folder`,
-        value: "default",
-        description: defaultDir,
-      },
-      {
-        name: "Custom folder",
-        value: "custom",
-      },
-      {
-        name: "Cancel",
-        value: "cancel",
-      },
-    ],
-  });
-
-  if (choice === "cancel") {
-    throw new Error("Migration cancelled.");
-  }
-
-  if (choice === "default") {
-    return resolvePath(defaultDir, cwd, homeDir);
-  }
-
-  const customTarget = await input({
-    message: "Custom target skills folder",
-    default: resolvePath(defaultDir, cwd, homeDir),
-    validate: (value) => value.trim().length > 0 || "Enter a target folder path.",
-  });
-
-  return resolvePath(customTarget, cwd, homeDir);
-}
-
 async function selectCandidates(candidates: SkillCandidate[], options: SelectOptions): Promise<SkillCandidate[]> {
   if (options.filterQuery !== undefined) {
     const filteredCandidates = filterSkills(candidates, options.filterQuery);
@@ -338,7 +233,7 @@ async function selectCandidates(candidates: SkillCandidate[], options: SelectOpt
       printFilteredCount(filteredCandidates.length, candidates.length);
     }
 
-    return options.selectAll ? filteredCandidates : selectFromList(filteredCandidates);
+    return options.selectAll ? filteredCandidates : selectFromList(filteredCandidates, candidates);
   }
 
   if (options.selectAll) {
@@ -389,7 +284,7 @@ async function interactiveSelection(candidates: SkillCandidate[]): Promise<Skill
     }
 
     if (action === "browse") {
-      return selectFromList(candidates);
+      return selectFromList(candidates, candidates);
     }
 
     if (action === "cancel") {
@@ -455,7 +350,7 @@ async function searchSelection(candidates: SkillCandidate[]): Promise<SkillCandi
     });
 
     if (action === "choose") {
-      return selectFromList(filteredCandidates);
+      return selectFromList(filteredCandidates, candidates);
     }
 
     if (action === "all") {
@@ -472,31 +367,33 @@ async function searchSelection(candidates: SkillCandidate[]): Promise<SkillCandi
   }
 }
 
-async function inspectSkillDetails(candidates: SkillCandidate[]): Promise<void> {
-  const query = await input({
-    message: "Search for a skill to inspect (leave blank to go back)",
-    default: "",
-  });
-
-  if (query.trim().length === 0) {
-    return;
-  }
-
-  const matches = filterSkills(candidates, query);
+async function inspectSkillDetails(candidates: SkillCandidate[], initialMatches?: SkillCandidate[]): Promise<void> {
+  const matches = initialMatches ?? await searchSkillsForDetails(candidates);
   if (matches.length === 0) {
-    console.log(chalk.yellow("No skills matched that search."));
     return;
   }
 
-  const candidate = await select<string>({
-    message: "Choose a skill to inspect",
-    pageSize: 12,
-    choices: matches.slice(0, 50).map((skill) => ({
+  const choices = [
+    ...matches.slice(0, 50).map((skill) => ({
       name: `${skill.name} ${chalk.dim(`[${skill.scope}]`)}`,
       value: skill.id,
       description: skill.description ?? skill.sourceDir,
     })),
+    {
+      name: "Back",
+      value: "__back__",
+    },
+  ];
+
+  const candidate = await select<string>({
+    message: "Choose a skill to inspect",
+    pageSize: 12,
+    choices,
   });
+  if (candidate === "__back__") {
+    return;
+  }
+
   const skill = matches.find((match) => match.id === candidate);
   if (!skill) {
     return;
@@ -522,20 +419,61 @@ async function inspectSkillDetails(candidates: SkillCandidate[]): Promise<void> 
   console.log("");
 }
 
-async function selectFromList(candidates: SkillCandidate[]): Promise<SkillCandidate[]> {
-  const selectedIds = await checkbox<string>({
+async function searchSkillsForDetails(candidates: SkillCandidate[]): Promise<SkillCandidate[]> {
+  const query = await input({
+    message: "Search for a skill to inspect (leave blank to go back)",
+    default: "",
+  });
+
+  if (query.trim().length === 0) {
+    return [];
+  }
+
+  const matches = filterSkills(candidates, query);
+  if (matches.length === 0) {
+    console.log(chalk.yellow("No skills matched that search."));
+    return [];
+  }
+
+  return matches;
+}
+
+async function selectFromList(candidates: SkillCandidate[], allCandidates: SkillCandidate[]): Promise<SkillCandidate[]> {
+  while (true) {
+    const selectedIds = await checkbox<SelectionListValue>({
     message: "Select skills to migrate. Space selects, a toggles all, i inverts, enter confirms.",
     pageSize: 12,
     required: false,
-    choices: candidates.map((candidate) => ({
-      name: `${candidate.name} ${chalk.dim(`[${candidate.scope}]`)}`,
-      value: candidate.id,
-      description: candidate.description ?? candidate.sourceDir,
-    })),
-  });
+      choices: [
+        {
+          name: "Back",
+          value: "__back__",
+        },
+        {
+          name: "View skill details",
+          value: "__details__",
+          description: "Inspect a skill, then return to this list.",
+        },
+        ...candidates.map((candidate) => ({
+          name: `${candidate.name} ${chalk.dim(`[${candidate.scope}]`)}`,
+          value: candidate.id,
+          description: candidate.description ?? candidate.sourceDir,
+        })),
+      ],
+    });
 
-  const selected = new Set(selectedIds);
-  return candidates.filter((candidate) => selected.has(candidate.id));
+    const selected = new Set(selectedIds);
+    if (selected.has("__back__")) {
+      return [];
+    }
+
+    if (selected.has("__details__")) {
+      await inspectSkillDetails(allCandidates, candidates);
+      continue;
+    }
+
+    return candidates.filter((candidate) => selected.has(candidate.id));
+  }
 }
 
 function createConflictResolver(options: BridgeOptions): ((conflict: ImportConflict) => Promise<ConflictAction>) | undefined {
@@ -603,10 +541,6 @@ function parseConflictPolicy(value: string): ConflictPolicy {
 
 function defaultTargetDir(platform: SkillPlatform): string {
   return platform === "claude" ? "~/.claude/skills" : "~/.codex/skills";
-}
-
-function platformDirectory(platform: SkillPlatform): string {
-  return platform === "claude" ? ".claude" : ".codex";
 }
 
 function conflictModeLabel(options: BridgeOptions): string {

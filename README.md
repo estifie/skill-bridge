@@ -112,26 +112,7 @@ Codex
 Cancel
 ```
 
-You can use default skill locations or provide a custom source folder:
-
-```text
-Where should I read source skills from?
-Default skill locations
-Custom folder
-Default locations plus custom folder
-Cancel
-```
-
-You can also choose a custom target folder:
-
-```text
-Where should I write migrated skills?
-Default Codex skills folder
-Custom folder
-Cancel
-```
-
-After discovery, the skill picker opens:
+Skill Bridge uses the default skill folders unless you pass `--source` or `--target`. After discovery, the skill picker opens:
 
 ```text
 How do you want to choose skills?
@@ -154,6 +135,11 @@ Opens a multi-select list. Use the keyboard shortcuts shown by Inquirer:
 - `a` toggles all visible skills.
 - `i` inverts the current selection.
 - `enter` confirms.
+
+The list also includes:
+
+- `Back` to return to the previous picker menu.
+- `View skill details` to inspect a skill and then return to the list.
 
 ### Search / Filter Skills
 
