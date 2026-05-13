@@ -254,28 +254,31 @@ skill-bridge --from claude --to codex --filter estifie --all --dry-run
 
 ## Platform Behavior
 
-### Claude Code -> Codex
+Skill Bridge treats each supported tool as a local skill platform. The source platform controls where skills are discovered from; the target platform controls where migrated skills are written.
 
-- Reads from `~/.claude/skills` and project `.claude/skills` by default.
-- Writes to `~/.codex/skills` by default.
-- Converts `SKILL.md` frontmatter to Codex-friendly `name` and `description`.
-- Drops Claude-specific frontmatter such as `allowed-tools`, `disable-model-invocation`, and `user-invocable`.
-- Creates `agents/openai.yaml` unless `--no-codex-metadata` is used.
+### Claude Code
 
-### Codex -> Claude Code
+- Personal skills: `~/.claude/skills`
+- Project skills: `.claude/skills`
+- Skill shape: `<skill>/SKILL.md` plus supporting files.
+- Claude-specific frontmatter such as `allowed-tools`, `disable-model-invocation`, and `user-invocable` is removed when migrating to non-Claude targets.
 
-- Reads from `~/.codex/skills` and project `.codex/skills` by default.
-- Writes to `~/.claude/skills` by default.
-- Preserves the skill body and supporting resources.
-- Does not copy Codex-only `agents/openai.yaml` metadata.
+### Codex
+
+- Personal skills: `~/.codex/skills`
+- Project skills: `.codex/skills`
+- Skill shape: `<skill>/SKILL.md` plus supporting files.
+- Codex output can include `agents/openai.yaml` metadata unless `--no-codex-metadata` is used.
+- Codex-only `agents/openai.yaml` metadata is not copied when migrating to Claude Code or Antigravity.
 
 ### Antigravity
 
-- Reads from `~/.gemini/antigravity/skills` by default.
-- Writes to `~/.gemini/antigravity/skills` when Antigravity is the target.
+- Global skills: `~/.gemini/antigravity/skills`
+- Project skills are not scanned automatically; pass `--source` for custom locations.
 - Uses the same local skill folder shape: `<skill>/SKILL.md` plus supporting files.
-- Does not scan Antigravity project folders automatically; pass `--source` for custom locations.
-- Does not copy Codex-only `agents/openai.yaml` metadata into Antigravity.
+- Codex-only `agents/openai.yaml` metadata is not copied into Antigravity.
+
+All default paths are resolved from the current user's home directory, so `~/.gemini/antigravity/skills` becomes the correct home-relative path on macOS, Linux, and Windows.
 
 ## CLI Reference
 
