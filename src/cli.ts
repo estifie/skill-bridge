@@ -1,10 +1,11 @@
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { checkbox, confirm } from "@inquirer/prompts";
+import { checkbox, confirm, input } from "@inquirer/prompts";
 import chalk from "chalk";
 import { Command, Option } from "commander";
 import { discoverSkills } from "./discover.js";
+import { filterSkills } from "./filter.js";
 import { importSkills } from "./importer.js";
 import { resolvePath } from "./paths.js";
 import type { ImportResult, SkillCandidate } from "./types.js";
@@ -14,6 +15,7 @@ interface CliOptions {
   target: string;
   cwd: string;
   all?: boolean;
+  filter?: string;
   yes?: boolean;
   dryRun?: boolean;
   overwrite?: boolean;
@@ -32,6 +34,7 @@ export async function runCli(argv: string[] = process.argv): Promise<void> {
     .option("-t, --target <path>", "Codex skills directory.", "~/.codex/skills")
     .option("--cwd <path>", "Project directory used for .claude/skills discovery.", process.cwd())
     .option("-a, --all", "Select every discovered skill without opening the selector.")
+    .option("-f, --filter <query>", "Filter discovered skills by name, description, scope, or path.")
     .option("-y, --yes", "Accept the import confirmation prompt.")
     .option("--dry-run", "Show what would be imported without writing files.")
     .option("--overwrite", "Replace existing destination skill folders.")
@@ -70,7 +73,15 @@ async function runImport(options: CliOptions): Promise<void> {
 
   console.log(chalk.dim(`Found ${candidates.length} skill${candidates.length === 1 ? "" : "s"}.`));
 
-  const selected = await selectCandidates(candidates, Boolean(options.all));
+  const selectOptions: SelectOptions = {
+    selectAll: Boolean(options.all),
+  };
+
+  if (options.filter !== undefined) {
+    selectOptions.filterQuery = options.filter;
+  }
+
+  const selected = await selectCandidates(candidates, selectOptions);
   if (selected.length === 0) {
     console.log(chalk.yellow("No skills selected."));
     return;
@@ -101,20 +112,38 @@ async function runImport(options: CliOptions): Promise<void> {
   printResults(results);
 }
 
-async function selectCandidates(candidates: SkillCandidate[], selectAll: boolean): Promise<SkillCandidate[]> {
-  if (selectAll) {
-    return candidates;
+interface SelectOptions {
+  selectAll: boolean;
+  filterQuery?: string;
+}
+
+async function selectCandidates(candidates: SkillCandidate[], options: SelectOptions): Promise<SkillCandidate[]> {
+  const filteredCandidates = await resolveFilter(candidates, options.filterQuery);
+
+  if (filteredCandidates.length === 0) {
+    console.log(chalk.yellow("No skills matched the current filter."));
+    return [];
+  }
+
+  if (filteredCandidates.length !== candidates.length) {
+    console.log(
+      chalk.dim(`Filtered to ${filteredCandidates.length} of ${candidates.length} skill${candidates.length === 1 ? "" : "s"}.`),
+    );
+  }
+
+  if (options.selectAll) {
+    return filteredCandidates;
   }
 
   if (!process.stdin.isTTY) {
-    throw new Error("Interactive selection requires a TTY. Use --all for non-interactive runs.");
+    throw new Error("Interactive selection requires a TTY. Use --all and optionally --filter for non-interactive runs.");
   }
 
   const selectedIds = await checkbox<string>({
     message: "Select skills to import. Space selects, a toggles all, i inverts, enter confirms.",
     pageSize: 12,
     required: false,
-    choices: candidates.map((candidate) => ({
+    choices: filteredCandidates.map((candidate) => ({
       name: `${candidate.name} ${chalk.dim(`[${candidate.scope}]`)}`,
       value: candidate.id,
       description: candidate.description ?? candidate.sourceDir,
@@ -122,7 +151,24 @@ async function selectCandidates(candidates: SkillCandidate[], selectAll: boolean
   });
 
   const selected = new Set(selectedIds);
-  return candidates.filter((candidate) => selected.has(candidate.id));
+  return filteredCandidates.filter((candidate) => selected.has(candidate.id));
+}
+
+async function resolveFilter(candidates: SkillCandidate[], filterQuery?: string): Promise<SkillCandidate[]> {
+  if (filterQuery !== undefined) {
+    return filterSkills(candidates, filterQuery);
+  }
+
+  if (candidates.length <= 50 || !process.stdin.isTTY) {
+    return candidates;
+  }
+
+  const query = await input({
+    message: "Search skills first. Match name, description, scope, or path. Leave blank to browse all.",
+    default: "",
+  });
+
+  return filterSkills(candidates, query);
 }
 
 function printHeader(): void {

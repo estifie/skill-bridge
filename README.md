@@ -13,6 +13,7 @@ The tool discovers Claude Code skills, lets you select one, several, or all of t
 - Converts `SKILL.md` frontmatter to Codex-friendly `name` and `description`
 - Copies the full skill directory, not just `SKILL.md`
 - Creates optional `agents/openai.yaml` UI metadata for Codex
+- Search/filter support for large skill libraries
 - Supports dry runs, overwrite mode, and non-interactive imports
 
 ## Usage
@@ -27,6 +28,18 @@ Import every discovered skill without opening the selector:
 
 ```bash
 npx claude-skills-to-codex --all --yes
+```
+
+Search before selecting when you have a large skill library:
+
+```bash
+npx claude-skills-to-codex --filter "react ui"
+```
+
+Import every skill matching a search query:
+
+```bash
+npx claude-skills-to-codex --filter "postgres" --all --yes
 ```
 
 Preview a custom source directory:
@@ -59,6 +72,7 @@ Options:
   -t, --target <path>        Codex skills directory. (default: "~/.codex/skills")
   --cwd <path>               Project directory used for .claude/skills discovery.
   -a, --all                  Select every discovered skill without opening the selector.
+  -f, --filter <query>       Filter discovered skills by name, description, scope, or path.
   -y, --yes                  Accept the import confirmation prompt.
   --dry-run                  Show what would be imported without writing files.
   --overwrite                Replace existing destination skill folders.
