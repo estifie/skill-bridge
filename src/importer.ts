@@ -201,7 +201,7 @@ function shouldCopy(source: string, targetPlatform: ImportOptions["targetPlatfor
     return false;
   }
 
-  return !(targetPlatform === "claude" && basename === "agents");
+  return !(targetPlatform !== "codex" && basename === "agents");
 }
 
 function toPosixPath(input: string): string {

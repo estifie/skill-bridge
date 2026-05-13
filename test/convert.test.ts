@@ -46,7 +46,7 @@ Create concise documentation for developer tools.
     expect(converted.name).toBe("docs-writer");
     expect(converted.description).toBe("Create concise documentation for developer tools.");
     expect(converted.skillMarkdown).toMatch(/^---\nname: docs-writer\n/);
-    expect(converted.notes).toContain("Added Codex frontmatter because the source did not contain a valid YAML block.");
+    expect(converted.notes).toContain("Added SKILL.md frontmatter because the source did not contain a valid YAML block.");
   });
 
   it("normalizes Codex skills into Claude Code skills", () => {
@@ -72,6 +72,26 @@ Use local scripts when helpful.
     expect(converted.skillMarkdown).toContain("description: Helps Codex with local workflows.");
     expect(converted.skillMarkdown).not.toContain("metadata:");
     expect(converted.notes).toContain("Removed Codex-specific metadata from SKILL.md frontmatter.");
+  });
+
+  it("normalizes Claude Code skills into Antigravity skills", () => {
+    const candidate = candidateFor("review-helper", "claude");
+    const converted = convertSkill(
+      candidate,
+      `---
+name: review-helper
+description: Reviews implementation plans.
+allowed-tools: Read
+---
+
+# Review Helper
+`,
+      "antigravity",
+    );
+
+    expect(converted.skillMarkdown).toContain("name: review-helper");
+    expect(converted.skillMarkdown).not.toContain("allowed-tools");
+    expect(converted.notes).toContain("Removed Claude-specific frontmatter fields: allowed-tools.");
   });
 });
 

@@ -50,15 +50,18 @@ type ConflictPolicy = "ask" | "skip" | "overwrite";
 const platformLabels: Record<SkillPlatform, string> = {
   claude: "Claude Code",
   codex: "Codex",
+  antigravity: "Antigravity",
 };
+
+const platforms: SkillPlatform[] = ["claude", "codex", "antigravity"];
 
 export async function runCli(argv: string[] = process.argv): Promise<void> {
   const program = new Command()
     .name("skill-bridge")
-    .description("Bidirectional CLI for migrating skills between Claude Code and Codex.")
+    .description("CLI for migrating local skills between Claude Code, Codex, and Antigravity.")
     .version("0.1.0")
-    .addOption(new Option("--from <platform>", "Source platform: claude or codex.").argParser(parsePlatform))
-    .addOption(new Option("--to <platform>", "Target platform: claude or codex.").argParser(parsePlatform))
+    .addOption(new Option("--from <platform>", "Source platform: claude, codex, or antigravity.").argParser(parsePlatform))
+    .addOption(new Option("--to <platform>", "Target platform: claude, codex, or antigravity.").argParser(parsePlatform))
     .option("-s, --source <path...>", "Custom source skills directory or a single skill directory.")
     .option("-t, --target <path>", "Target skills directory. Defaults to the selected target platform.")
     .option("--cwd <path>", "Project directory used for project skill discovery.", process.cwd())
@@ -183,6 +186,11 @@ async function promptSourcePlatform(): Promise<SkillPlatform> {
         description: "Read skills from ~/.codex/skills and project .codex/skills.",
       },
       {
+        name: "Antigravity",
+        value: "antigravity",
+        description: "Read skills from ~/.gemini/antigravity/skills.",
+      },
+      {
         name: "Cancel",
         value: "cancel",
       },
@@ -197,14 +205,15 @@ async function promptSourcePlatform(): Promise<SkillPlatform> {
 }
 
 async function promptTargetPlatform(sourcePlatform: SkillPlatform): Promise<SkillPlatform> {
-  const targetPlatform = sourcePlatform === "claude" ? "codex" : "claude";
   const choice = await select<PlatformChoice>({
     message: "Which platform do you want to migrate to?",
     choices: [
-      {
-        name: platformLabels[targetPlatform],
-        value: targetPlatform,
-      },
+      ...platforms
+        .filter((platform) => platform !== sourcePlatform)
+        .map((platform) => ({
+          name: platformLabels[platform],
+          value: platform,
+        })),
       {
         name: "Cancel",
         value: "cancel",
@@ -357,11 +366,11 @@ function createConflictResolver(options: BridgeOptions): ((conflict: ImportConfl
 }
 
 function parsePlatform(value: string): SkillPlatform {
-  if (value === "claude" || value === "codex") {
+  if (value === "claude" || value === "codex" || value === "antigravity") {
     return value;
   }
 
-  throw new InvalidArgumentError("Expected claude or codex.");
+  throw new InvalidArgumentError("Expected claude, codex, or antigravity.");
 }
 
 function parseConflictPolicy(value: string): ConflictPolicy {
@@ -373,7 +382,15 @@ function parseConflictPolicy(value: string): ConflictPolicy {
 }
 
 function defaultTargetDir(platform: SkillPlatform): string {
-  return platform === "claude" ? "~/.claude/skills" : "~/.codex/skills";
+  if (platform === "claude") {
+    return "~/.claude/skills";
+  }
+
+  if (platform === "codex") {
+    return "~/.codex/skills";
+  }
+
+  return "~/.gemini/antigravity/skills";
 }
 
 function conflictModeLabel(options: BridgeOptions): string {
@@ -398,7 +415,7 @@ function printFilteredCount(filteredCount: number, totalCount: number): void {
 
 function printHeader(): void {
   console.log(chalk.bold("Skill Bridge"));
-  console.log(chalk.dim("Migrate skills between Claude Code and Codex.\n"));
+  console.log(chalk.dim("Migrate local skills between Claude Code, Codex, and Antigravity.\n"));
 }
 
 function printMigrationPlan(

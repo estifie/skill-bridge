@@ -99,6 +99,51 @@ description: Helps Codex users.
     await expect(access(path.join(targetDir, "codex-skill", "agents", "openai.yaml"))).rejects.toThrow();
   });
 
+  it("omits Codex agent metadata when migrating into Antigravity", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-bridge-antigravity-import-"));
+    const sourceDir = path.join(tempDir, "source", "codex-skill");
+    const targetDir = path.join(tempDir, "antigravity-skills");
+    await mkdir(path.join(sourceDir, "agents"), { recursive: true });
+    await writeFile(
+      path.join(sourceDir, "SKILL.md"),
+      `---
+name: codex-skill
+description: Helps Codex users.
+metadata:
+  short-description: Codex helper
+---
+
+# Codex Skill
+`,
+      "utf8",
+    );
+    await writeFile(path.join(sourceDir, "agents", "openai.yaml"), "interface: {}\n", "utf8");
+
+    await importSkill(
+      {
+        id: "custom:codex-skill",
+        name: "codex-skill",
+        platform: "codex",
+        sourceDir,
+        skillFile: path.join(sourceDir, "SKILL.md"),
+        rootDir: path.join(tempDir, "source"),
+        scope: "custom",
+      },
+      {
+        targetPlatform: "antigravity",
+        targetDir,
+        overwrite: false,
+        skipExisting: false,
+        createCodexMetadata: false,
+        dryRun: false,
+      },
+    );
+
+    const importedSkill = await readFile(path.join(targetDir, "codex-skill", "SKILL.md"), "utf8");
+    expect(importedSkill).not.toContain("metadata:");
+    await expect(access(path.join(targetDir, "codex-skill", "agents", "openai.yaml"))).rejects.toThrow();
+  });
+
   it("skips existing identical destination skills by checksum", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-bridge-identical-"));
     const sourceDir = path.join(tempDir, "source", "same-skill");

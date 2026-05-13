@@ -87,6 +87,31 @@ describe("discoverSkills", () => {
     expect(skills.map((skill) => skill.name).sort()).toEqual(["personal-codex", "project-codex"]);
     expect(skills.every((skill) => skill.platform === "codex")).toBe(true);
   });
+
+  it("finds Antigravity skills from the global Gemini directory", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-bridge-antigravity-discover-"));
+    const homeDir = path.join(tempDir, "home");
+    const antigravitySkill = path.join(homeDir, ".gemini", "antigravity", "skills", "global-antigravity");
+    const ignoredProjectSkill = path.join(tempDir, "repo", ".agent", "skills", "project-antigravity");
+
+    await mkdir(antigravitySkill, { recursive: true });
+    await mkdir(ignoredProjectSkill, { recursive: true });
+    await writeSkill(path.join(antigravitySkill, "SKILL.md"), "Global Antigravity");
+    await writeSkill(path.join(ignoredProjectSkill, "SKILL.md"), "Project Antigravity");
+
+    const skills = await discoverSkills({
+      platform: "antigravity",
+      cwd: path.join(tempDir, "repo"),
+      homeDir,
+      includePersonal: true,
+      includeProject: true,
+      sources: [],
+    });
+
+    expect(skills.map((skill) => skill.name)).toEqual(["global-antigravity"]);
+    expect(skills[0]?.platform).toBe("antigravity");
+    expect(skills[0]?.sourceDir).toBe(antigravitySkill);
+  });
 });
 
 async function writeSkill(filePath: string, name: string): Promise<void> {

@@ -12,7 +12,7 @@ export async function discoverSkills(options: DiscoverOptions): Promise<SkillCan
 
   if (options.includePersonal) {
     roots.push({
-      rootDir: path.join(options.homeDir, platformDirectory(options.platform), "skills"),
+      rootDir: personalSkillsDir(options.platform, options.homeDir),
       scope: "personal",
       maxDepth: 1,
     });
@@ -20,8 +20,13 @@ export async function discoverSkills(options: DiscoverOptions): Promise<SkillCan
 
   if (options.includeProject) {
     for (const dir of await projectSearchDirs(options.cwd)) {
+      const rootDir = projectSkillsDir(options.platform, dir);
+      if (!rootDir) {
+        continue;
+      }
+
       roots.push({
-        rootDir: path.join(dir, platformDirectory(options.platform), "skills"),
+        rootDir,
         scope: "project",
         maxDepth: 1,
       });
@@ -114,7 +119,23 @@ async function buildCandidate(
   };
 }
 
-function platformDirectory(platform: SkillPlatform): string {
+function personalSkillsDir(platform: SkillPlatform, homeDir: string): string {
+  if (platform === "antigravity") {
+    return path.join(homeDir, ".gemini", "antigravity", "skills");
+  }
+
+  return path.join(homeDir, platformDirectory(platform), "skills");
+}
+
+function projectSkillsDir(platform: SkillPlatform, projectDir: string): string | undefined {
+  if (platform === "antigravity") {
+    return undefined;
+  }
+
+  return path.join(projectDir, platformDirectory(platform), "skills");
+}
+
+function platformDirectory(platform: Exclude<SkillPlatform, "antigravity">): string {
   return platform === "claude" ? ".claude" : ".codex";
 }
 

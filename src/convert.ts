@@ -71,7 +71,7 @@ function buildDescription(
   const description = getString(attributes, "description");
   const whenToUse = getString(attributes, "when_to_use");
   const bodyFallback = firstMeaningfulParagraph(body);
-  const base = description ?? bodyFallback ?? `Imported Claude Code skill for ${humanizeName(candidateName)}.`;
+  const base = description ?? bodyFallback ?? `Imported local skill for ${humanizeName(candidateName)}.`;
   const combined = whenToUse && !base.includes(whenToUse) ? `${base} ${whenToUse}` : base;
 
   return truncate(compactWhitespace(combined), 1200);
@@ -95,17 +95,17 @@ function buildNotes(
   const notes: string[] = [];
 
   if (!hadFrontmatter) {
-    notes.push("Added Codex frontmatter because the source did not contain a valid YAML block.");
+    notes.push("Added SKILL.md frontmatter because the source did not contain a valid YAML block.");
   }
 
-  const removedFields = targetPlatform === "codex"
+  const removedFields = targetPlatform !== "claude"
     ? claudeOnlyFields.filter((field) => attributes[field] !== undefined)
     : [];
   if (removedFields.length > 0) {
     notes.push(`Removed Claude-specific frontmatter fields: ${removedFields.join(", ")}.`);
   }
 
-  if (targetPlatform === "claude" && attributes.metadata !== undefined) {
+  if (targetPlatform !== "codex" && attributes.metadata !== undefined) {
     notes.push("Removed Codex-specific metadata from SKILL.md frontmatter.");
   }
 

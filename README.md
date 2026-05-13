@@ -1,26 +1,27 @@
 # Skill Bridge
 
-I use multiple agent tools side by side, and each one has its own skill system. Over time that meant I was constantly working with different skill sets, different instructions, and slightly different outputs depending on where I was running the task. Skill Bridge started as a small tool to solve that problem for myself: move skills between Claude Code and Codex without manually copying folders, rewriting frontmatter, or losing scripts and references.
+I use multiple agent tools side by side, and each one has its own skill system. Over time that meant I was constantly working with different skill sets, different instructions, and slightly different outputs depending on where I was running the task. Skill Bridge started as a small tool to solve that problem for myself: move skills between Claude Code, Codex, and Antigravity without manually copying folders, rewriting frontmatter, or losing scripts and references.
 
-Skill Bridge is a bidirectional CLI for migrating skills between Claude Code and Codex. It discovers skill folders, lets you choose source and target platforms, supports large skill libraries with search and preview flows, checks destination conflicts with SHA-256 checksums, and copies complete skill directories safely.
+Skill Bridge is a CLI for migrating local skill folders between Claude Code, Codex, and Antigravity. It discovers skill folders, lets you choose source and target platforms, supports large skill libraries with inline search, checks destination conflicts with SHA-256 checksums, and copies complete skill directories safely.
 
 ## What It Does
 
 - Migrates Claude Code skills to Codex.
 - Migrates Codex skills to Claude Code.
+- Migrates Antigravity global skills to and from Claude Code or Codex.
 - Preserves full skill folders, including `scripts/`, `references/`, `assets/`, examples, and supporting files.
-- Reads personal skill folders from `~/.claude/skills` and `~/.codex/skills`.
+- Reads personal skill folders from `~/.claude/skills`, `~/.codex/skills`, and `~/.gemini/antigravity/skills`.
 - Reads project skill folders from `.claude/skills` and `.codex/skills`.
 - Follows symlinked skill directories.
 - Supports custom source and target folders.
-- Provides an interactive terminal UI for browsing, searching, inspecting, and selecting skills.
+- Provides an interactive terminal UI for browsing, searching, and selecting skills.
 - Supports non-interactive scripted migrations with flags.
 - Detects destination conflicts with SHA-256 checksums.
 - Automatically skips identical destination skills.
 - Asks whether to overwrite or skip differing destination skills.
 - Supports overwrite all / skip all conflict decisions.
 - Creates optional `agents/openai.yaml` metadata when migrating to Codex.
-- Omits Codex-only `agents/openai.yaml` metadata when migrating to Claude Code.
+- Omits Codex-only `agents/openai.yaml` metadata when migrating to Claude Code or Antigravity.
 - Supports dry runs before writing anything.
 
 ## Installation
@@ -81,6 +82,12 @@ Migrate Codex skills to Claude Code:
 skill-bridge --from codex --to claude
 ```
 
+Preview Antigravity global skills moving into Codex:
+
+```bash
+skill-bridge --from antigravity --to codex --all --dry-run
+```
+
 Run a non-interactive migration and skip destination conflicts:
 
 ```bash
@@ -101,6 +108,7 @@ Skill Bridge asks where the migration should start:
 Which platform do you want to migrate from?
 Claude Code
 Codex
+Antigravity
 Cancel
 ```
 
@@ -109,6 +117,7 @@ Then it asks where the migrated skills should go:
 ```text
 Which platform do you want to migrate to?
 Codex
+Antigravity
 Cancel
 ```
 
@@ -158,6 +167,12 @@ Search lives inside Browse and updates the visible skills as you type:
 ```
 
 ## Custom Folders
+
+Default skill folders are resolved from the current user's home directory, so the same defaults work on macOS, Linux, and Windows:
+
+- Claude Code: `~/.claude/skills`
+- Codex: `~/.codex/skills`
+- Antigravity: `~/.gemini/antigravity/skills`
 
 Use `--source` to read skills from a custom folder instead of the default personal and project locations:
 
@@ -254,18 +269,26 @@ skill-bridge --from claude --to codex --filter estifie --all --dry-run
 - Preserves the skill body and supporting resources.
 - Does not copy Codex-only `agents/openai.yaml` metadata.
 
+### Antigravity
+
+- Reads from `~/.gemini/antigravity/skills` by default.
+- Writes to `~/.gemini/antigravity/skills` when Antigravity is the target.
+- Uses the same local skill folder shape: `<skill>/SKILL.md` plus supporting files.
+- Does not scan Antigravity project folders automatically; pass `--source` for custom locations.
+- Does not copy Codex-only `agents/openai.yaml` metadata into Antigravity.
+
 ## CLI Reference
 
 ```text
 Usage: skill-bridge [options]
 
-Bidirectional CLI for migrating skills between Claude Code and Codex.
+CLI for migrating local skills between Claude Code, Codex, and Antigravity.
 ```
 
 ```text
 Options:
-  --from <platform>         Source platform: claude or codex.
-  --to <platform>           Target platform: claude or codex.
+  --from <platform>         Source platform: claude, codex, or antigravity.
+  --to <platform>           Target platform: claude, codex, or antigravity.
   -s, --source <path...>    Custom source skills directory or a single skill directory.
   -t, --target <path>       Target skills directory. Defaults to the selected target platform.
   --cwd <path>              Project directory used for project skill discovery.
@@ -312,6 +335,12 @@ Use Codex output without generating `agents/openai.yaml`:
 skill-bridge --from claude --to codex --all --no-codex-metadata
 ```
 
+Migrate Claude Code skills into Antigravity:
+
+```bash
+skill-bridge --from claude --to antigravity --all --dry-run
+```
+
 ## Development
 
 This project uses Bun for local development.
@@ -334,4 +363,5 @@ Run local smoke tests:
 ```bash
 bun run dev -- --from claude --to codex --filter estifie --all --dry-run
 bun run dev -- --from codex --to claude --all --dry-run
+bun run dev -- --from antigravity --to codex --all --dry-run
 ```

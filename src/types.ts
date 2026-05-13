@@ -1,4 +1,4 @@
-export type SkillPlatform = "claude" | "codex";
+export type SkillPlatform = "claude" | "codex" | "antigravity";
 export type SkillScope = "personal" | "project" | "custom";
 
 export interface SkillCandidate {
