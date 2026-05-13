@@ -1,0 +1,56 @@
+{
+  "name": "claude-skills-to-codex",
+  "version": "0.1.0",
+  "description": "Interactive CLI for migrating Claude Code skills into Codex skill folders.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Estifie",
+  "bin": {
+    "claude-skills-to-codex": "./dist/index.js",
+    "csk": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/index.ts",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "skills",
+    "cli",
+    "migration",
+    "typescript"
+  ],
+  "dependencies": {
+    "@inquirer/prompts": "^8.0.1",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.2",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.1",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/estifie/claude-skills-to-codex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/estifie/claude-skills-to-codex/issues"
+  },
+  "homepage": "https://github.com/estifie/claude-skills-to-codex#readme"
+}
