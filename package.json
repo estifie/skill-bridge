@@ -15,7 +15,7 @@
     }
   },
   "bin": {
-    "skill-bridge": "./dist/index.js"
+    "skill-bridge": "dist/index.js"
   },
   "files": [
     "dist",
