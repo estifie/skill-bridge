@@ -74,12 +74,12 @@ function buildDescription(
 }
 
 function firstMeaningfulParagraph(body: string): string | undefined {
-  const paragraph = body
-    .split(/\r?\n\s*\r?\n/)
-    .map((section) => section.replace(/^#+\s+/gm, "").trim())
-    .find((section) => section.length > 0 && !section.startsWith("```"));
+  const paragraph = body.split(/\r?\n\s*\r?\n/).find((section) => {
+    const trimmed = section.trim();
+    return trimmed.length > 0 && !trimmed.startsWith("#") && !trimmed.startsWith("```");
+  });
 
-  return paragraph ? compactWhitespace(paragraph) : undefined;
+  return paragraph ? compactWhitespace(paragraph.replace(/^#+\s+/gm, "")) : undefined;
 }
 
 function buildNotes(attributes: Record<string, unknown>, body: string, hadFrontmatter: boolean): string[] {
