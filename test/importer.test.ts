@@ -31,16 +31,18 @@ Use scripts/check.sh when validation is needed.
       {
         id: "custom:plan-skill",
         name: "plan-skill",
+        platform: "claude",
         sourceDir,
         skillFile: path.join(sourceDir, "SKILL.md"),
         rootDir: path.join(tempDir, "source"),
         scope: "custom",
       },
       {
+        targetPlatform: "codex",
         targetDir,
         overwrite: false,
         skipExisting: false,
-        createOpenAiMetadata: true,
+        createCodexMetadata: true,
         dryRun: false,
       },
     );
@@ -53,5 +55,47 @@ Use scripts/check.sh when validation is needed.
     const openAiYaml = await readFile(path.join(targetDir, "plan-skill", "agents", "openai.yaml"), "utf8");
     expect(openAiYaml).toContain('display_name: "Plan Skill"');
     expect(openAiYaml).toContain('default_prompt: "Use $plan-skill to help with this task."');
+  });
+
+  it("omits Codex agent metadata when migrating into Claude Code", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-bridge-import-"));
+    const sourceDir = path.join(tempDir, "source", "codex-skill");
+    const targetDir = path.join(tempDir, "claude-skills");
+    await mkdir(path.join(sourceDir, "agents"), { recursive: true });
+    await writeFile(
+      path.join(sourceDir, "SKILL.md"),
+      `---
+name: codex-skill
+description: Helps Codex users.
+---
+
+# Codex Skill
+`,
+      "utf8",
+    );
+    await writeFile(path.join(sourceDir, "agents", "openai.yaml"), "interface: {}\n", "utf8");
+
+    await importSkill(
+      {
+        id: "custom:codex-skill",
+        name: "codex-skill",
+        platform: "codex",
+        sourceDir,
+        skillFile: path.join(sourceDir, "SKILL.md"),
+        rootDir: path.join(tempDir, "source"),
+        scope: "custom",
+      },
+      {
+        targetPlatform: "claude",
+        targetDir,
+        overwrite: false,
+        skipExisting: false,
+        createCodexMetadata: false,
+        dryRun: false,
+      },
+    );
+
+    await access(path.join(targetDir, "codex-skill", "SKILL.md"));
+    await expect(access(path.join(targetDir, "codex-skill", "agents", "openai.yaml"))).rejects.toThrow();
   });
 });

@@ -1,8 +1,10 @@
+export type SkillPlatform = "claude" | "codex";
 export type SkillScope = "personal" | "project" | "custom";
 
 export interface SkillCandidate {
   id: string;
   name: string;
+  platform: SkillPlatform;
   sourceDir: string;
   skillFile: string;
   rootDir: string;
@@ -11,6 +13,7 @@ export interface SkillCandidate {
 }
 
 export interface DiscoverOptions {
+  platform: SkillPlatform;
   cwd: string;
   homeDir: string;
   includePersonal: boolean;
@@ -35,10 +38,11 @@ export interface ConvertedSkill {
 }
 
 export interface ImportOptions {
+  targetPlatform: SkillPlatform;
   targetDir: string;
   overwrite: boolean;
   skipExisting: boolean;
-  createOpenAiMetadata: boolean;
+  createCodexMetadata: boolean;
   dryRun: boolean;
 }
 

@@ -23,6 +23,7 @@ describe("discoverSkills", () => {
     await writeSkill(path.join(customSkill, "SKILL.md"), "Custom Skill");
 
     const skills = await discoverSkills({
+      platform: "claude",
       cwd,
       homeDir,
       includePersonal: true,
@@ -49,6 +50,7 @@ describe("discoverSkills", () => {
     await symlink(realSkill, linkedSkill, "dir");
 
     const skills = await discoverSkills({
+      platform: "claude",
       cwd: tempDir,
       homeDir,
       includePersonal: true,
@@ -58,6 +60,32 @@ describe("discoverSkills", () => {
 
     expect(skills.map((skill) => skill.name)).toEqual(["estifie-ios"]);
     expect(skills[0]?.sourceDir).toBe(linkedSkill);
+  });
+
+  it("finds Codex skills from personal and project directories", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "skill-bridge-codex-discover-"));
+    const homeDir = path.join(tempDir, "home");
+    const cwd = path.join(tempDir, "repo", "app");
+
+    await mkdir(path.join(homeDir, ".codex", "skills", "personal-codex"), { recursive: true });
+    await mkdir(path.join(tempDir, "repo", ".git"), { recursive: true });
+    await mkdir(path.join(tempDir, "repo", ".codex", "skills", "project-codex"), { recursive: true });
+    await mkdir(cwd, { recursive: true });
+
+    await writeSkill(path.join(homeDir, ".codex", "skills", "personal-codex", "SKILL.md"), "Personal Codex");
+    await writeSkill(path.join(tempDir, "repo", ".codex", "skills", "project-codex", "SKILL.md"), "Project Codex");
+
+    const skills = await discoverSkills({
+      platform: "codex",
+      cwd,
+      homeDir,
+      includePersonal: true,
+      includeProject: true,
+      sources: [],
+    });
+
+    expect(skills.map((skill) => skill.name).sort()).toEqual(["personal-codex", "project-codex"]);
+    expect(skills.every((skill) => skill.platform === "codex")).toBe(true);
   });
 });
 

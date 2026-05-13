@@ -1,7 +1,7 @@
 import path from "node:path";
 import { getString, parseFrontmatter, stringifyFrontmatter } from "./frontmatter.js";
 import { compactWhitespace, humanizeName, normalizeSkillName, truncate } from "./normalize.js";
-import type { ConvertedSkill, SkillCandidate } from "./types.js";
+import type { ConvertedSkill, SkillCandidate, SkillPlatform } from "./types.js";
 
 const claudeOnlyFields = [
   "allowed-tools",
@@ -19,12 +19,16 @@ const claudeOnlyFields = [
   "when_to_use",
 ] as const;
 
-export function convertSkill(candidate: SkillCandidate, markdown: string): ConvertedSkill {
+export function convertSkill(
+  candidate: SkillCandidate,
+  markdown: string,
+  targetPlatform: SkillPlatform = "codex",
+): ConvertedSkill {
   const parsed = parseFrontmatter(markdown);
   const originalName = getString(parsed.attributes, "name") ?? candidate.name;
   const name = normalizeSkillName(originalName, normalizeSkillName(path.basename(candidate.sourceDir)));
   const description = buildDescription(parsed.attributes, parsed.body, candidate.name);
-  const notes = buildNotes(parsed.attributes, parsed.body, parsed.hadFrontmatter);
+  const notes = buildNotes(parsed.attributes, parsed.body, parsed.hadFrontmatter, targetPlatform);
   const skillMarkdown = stringifyFrontmatter(
     {
       name,
@@ -82,16 +86,27 @@ function firstMeaningfulParagraph(body: string): string | undefined {
   return paragraph ? compactWhitespace(paragraph.replace(/^#+\s+/gm, "")) : undefined;
 }
 
-function buildNotes(attributes: Record<string, unknown>, body: string, hadFrontmatter: boolean): string[] {
+function buildNotes(
+  attributes: Record<string, unknown>,
+  body: string,
+  hadFrontmatter: boolean,
+  targetPlatform: SkillPlatform,
+): string[] {
   const notes: string[] = [];
 
   if (!hadFrontmatter) {
     notes.push("Added Codex frontmatter because the source did not contain a valid YAML block.");
   }
 
-  const removedFields = claudeOnlyFields.filter((field) => attributes[field] !== undefined);
+  const removedFields = targetPlatform === "codex"
+    ? claudeOnlyFields.filter((field) => attributes[field] !== undefined)
+    : [];
   if (removedFields.length > 0) {
     notes.push(`Removed Claude-specific frontmatter fields: ${removedFields.join(", ")}.`);
+  }
+
+  if (targetPlatform === "claude" && attributes.metadata !== undefined) {
+    notes.push("Removed Codex-specific metadata from SKILL.md frontmatter.");
   }
 
   if (/!\s*`/.test(body)) {

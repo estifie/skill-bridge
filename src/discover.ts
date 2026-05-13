@@ -3,7 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { getString, parseFrontmatter } from "./frontmatter.js";
 import { normalizeSkillName } from "./normalize.js";
 import { pathExists, projectSearchDirs, resolvePath } from "./paths.js";
-import type { DiscoverOptions, SkillCandidate, SkillScope } from "./types.js";
+import type { DiscoverOptions, SkillCandidate, SkillPlatform, SkillScope } from "./types.js";
 
 const ignoredDirectories = new Set([".git", "node_modules", "dist", "coverage"]);
 
@@ -12,7 +12,7 @@ export async function discoverSkills(options: DiscoverOptions): Promise<SkillCan
 
   if (options.includePersonal) {
     roots.push({
-      rootDir: path.join(options.homeDir, ".claude", "skills"),
+      rootDir: path.join(options.homeDir, platformDirectory(options.platform), "skills"),
       scope: "personal",
       maxDepth: 1,
     });
@@ -21,7 +21,7 @@ export async function discoverSkills(options: DiscoverOptions): Promise<SkillCan
   if (options.includeProject) {
     for (const dir of await projectSearchDirs(options.cwd)) {
       roots.push({
-        rootDir: path.join(dir, ".claude", "skills"),
+        rootDir: path.join(dir, platformDirectory(options.platform), "skills"),
         scope: "project",
         maxDepth: 1,
       });
@@ -43,7 +43,7 @@ export async function discoverSkills(options: DiscoverOptions): Promise<SkillCan
           return [];
         }
 
-        return findSkillsInRoot(root.rootDir, root.scope, root.maxDepth);
+        return findSkillsInRoot(root.rootDir, options.platform, root.scope, root.maxDepth);
       }),
     )
   ).flat();
@@ -51,14 +51,19 @@ export async function discoverSkills(options: DiscoverOptions): Promise<SkillCan
   return dedupeCandidates(candidates).sort((left, right) => left.name.localeCompare(right.name));
 }
 
-async function findSkillsInRoot(rootDir: string, scope: SkillScope, maxDepth: number): Promise<SkillCandidate[]> {
+async function findSkillsInRoot(
+  rootDir: string,
+  platform: SkillPlatform,
+  scope: SkillScope,
+  maxDepth: number,
+): Promise<SkillCandidate[]> {
   const candidates: SkillCandidate[] = [];
 
   async function visit(currentDir: string, depth: number): Promise<void> {
     const skillFile = path.join(currentDir, "SKILL.md");
 
     if (await pathExists(skillFile)) {
-      candidates.push(await buildCandidate(rootDir, currentDir, skillFile, scope));
+      candidates.push(await buildCandidate(rootDir, currentDir, skillFile, platform, scope));
       return;
     }
 
@@ -87,6 +92,7 @@ async function buildCandidate(
   rootDir: string,
   sourceDir: string,
   skillFile: string,
+  platform: SkillPlatform,
   scope: SkillScope,
 ): Promise<SkillCandidate> {
   const markdown = await readFile(skillFile, "utf8");
@@ -99,12 +105,17 @@ async function buildCandidate(
   return {
     id,
     name,
+    platform,
     sourceDir,
     skillFile,
     rootDir,
     scope,
     ...(description ? { description } : {}),
   };
+}
+
+function platformDirectory(platform: SkillPlatform): string {
+  return platform === "claude" ? ".claude" : ".codex";
 }
 
 function dedupeCandidates(candidates: SkillCandidate[]): SkillCandidate[] {

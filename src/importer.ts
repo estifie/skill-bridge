@@ -8,7 +8,7 @@ const copyIgnoreNames = new Set([".DS_Store", ".git", "node_modules"]);
 
 export async function importSkill(candidate: SkillCandidate, options: ImportOptions): Promise<ImportResult> {
   const markdown = await readFile(candidate.skillFile, "utf8");
-  const converted = convertSkill(candidate, markdown);
+  const converted = convertSkill(candidate, markdown, options.targetPlatform);
   const destinationDir = path.join(options.targetDir, converted.name);
   const exists = await pathExists(destinationDir);
 
@@ -48,12 +48,12 @@ export async function importSkill(candidate: SkillCandidate, options: ImportOpti
   await cp(candidate.sourceDir, destinationDir, {
     recursive: true,
     dereference: true,
-    filter: (source) => !copyIgnoreNames.has(path.basename(source)),
+    filter: (source) => shouldCopy(source, options.targetPlatform),
   });
 
   await writeFile(path.join(destinationDir, "SKILL.md"), converted.skillMarkdown, "utf8");
 
-  if (options.createOpenAiMetadata) {
+  if (options.targetPlatform === "codex" && options.createCodexMetadata) {
     const metadataDir = path.join(destinationDir, "agents");
     await mkdir(metadataDir, { recursive: true });
     await writeFile(path.join(metadataDir, "openai.yaml"), buildOpenAiMetadata(converted), "utf8");
@@ -65,6 +65,15 @@ export async function importSkill(candidate: SkillCandidate, options: ImportOpti
     status: "imported",
     notes: converted.notes,
   };
+}
+
+function shouldCopy(source: string, targetPlatform: ImportOptions["targetPlatform"]): boolean {
+  const basename = path.basename(source);
+  if (copyIgnoreNames.has(basename)) {
+    return false;
+  }
+
+  return !(targetPlatform === "claude" && basename === "agents");
 }
 
 export async function importSkills(

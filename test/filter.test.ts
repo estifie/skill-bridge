@@ -35,6 +35,7 @@ function candidate(
   return {
     id: `${scope}:${name}`,
     name,
+    platform: "claude",
     description,
     sourceDir,
     skillFile: `${sourceDir}/SKILL.md`,

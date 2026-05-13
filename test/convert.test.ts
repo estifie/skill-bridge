@@ -48,12 +48,38 @@ Create concise documentation for developer tools.
     expect(converted.skillMarkdown).toMatch(/^---\nname: docs-writer\n/);
     expect(converted.notes).toContain("Added Codex frontmatter because the source did not contain a valid YAML block.");
   });
+
+  it("normalizes Codex skills into Claude Code skills", () => {
+    const candidate = candidateFor("codex-helper", "codex");
+    const converted = convertSkill(
+      candidate,
+      `---
+name: codex-helper
+description: Helps Codex with local workflows.
+metadata:
+  short-description: Local workflow helper
+---
+
+# Codex Helper
+
+Use local scripts when helpful.
+`,
+      "claude",
+    );
+
+    expect(converted.name).toBe("codex-helper");
+    expect(converted.skillMarkdown).toContain("name: codex-helper");
+    expect(converted.skillMarkdown).toContain("description: Helps Codex with local workflows.");
+    expect(converted.skillMarkdown).not.toContain("metadata:");
+    expect(converted.notes).toContain("Removed Codex-specific metadata from SKILL.md frontmatter.");
+  });
 });
 
-function candidateFor(name: string): SkillCandidate {
+function candidateFor(name: string, platform: SkillCandidate["platform"] = "claude"): SkillCandidate {
   return {
     id: `custom:${name}`,
     name,
+    platform,
     sourceDir: `/tmp/${name}`,
     skillFile: `/tmp/${name}/SKILL.md`,
     rootDir: "/tmp",

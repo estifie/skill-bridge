@@ -8,9 +8,9 @@ import { discoverSkills } from "./discover.js";
 import { filterSkills } from "./filter.js";
 import { importSkills } from "./importer.js";
 import { resolvePath } from "./paths.js";
-import type { ImportResult, SkillCandidate } from "./types.js";
+import type { ImportResult, SkillCandidate, SkillPlatform } from "./types.js";
 
-interface CliOptions {
+interface BridgeOptions {
   source?: string[];
   target: string;
   cwd: string;
@@ -22,42 +22,141 @@ interface CliOptions {
   skipExisting?: boolean;
   personal?: boolean;
   project?: boolean;
-  openaiMetadata?: boolean;
+  codexMetadata?: boolean;
 }
+
+interface DirectionConfig {
+  command: string;
+  sourcePlatform: SkillPlatform;
+  targetPlatform: SkillPlatform;
+  description: string;
+  defaultTarget: string;
+  sourceLabel: string;
+  targetLabel: string;
+  emptyMessage: string;
+}
+
+interface SelectOptions {
+  selectAll: boolean;
+  filterQuery?: string;
+}
+
+type DirectionChoice = "to-codex" | "to-claude" | "cancel";
+type SelectionAction = "search" | "browse" | "all" | "cancel";
+type SearchResultAction = "choose" | "all" | "again" | "back" | "cancel";
+
+const directions: Record<Exclude<DirectionChoice, "cancel">, DirectionConfig> = {
+  "to-codex": {
+    command: "to-codex",
+    sourcePlatform: "claude",
+    targetPlatform: "codex",
+    description: "Migrate Claude Code skills into Codex.",
+    defaultTarget: "~/.codex/skills",
+    sourceLabel: "Claude Code",
+    targetLabel: "Codex",
+    emptyMessage: "No Claude Code skills were found.",
+  },
+  "to-claude": {
+    command: "to-claude",
+    sourcePlatform: "codex",
+    targetPlatform: "claude",
+    description: "Migrate Codex skills into Claude Code.",
+    defaultTarget: "~/.claude/skills",
+    sourceLabel: "Codex",
+    targetLabel: "Claude Code",
+    emptyMessage: "No Codex skills were found.",
+  },
+};
 
 export async function runCli(argv: string[] = process.argv): Promise<void> {
   const program = new Command()
-    .name("claude-skills-to-codex")
-    .description("Interactively migrate Claude Code skills into Codex skill folders.")
-    .version("0.1.0")
-    .option("-s, --source <path...>", "Custom Claude skills directory or a single skill directory.")
-    .option("-t, --target <path>", "Codex skills directory.", "~/.codex/skills")
-    .option("--cwd <path>", "Project directory used for .claude/skills discovery.", process.cwd())
-    .option("-a, --all", "Select every discovered skill without opening the selector.")
-    .option("-f, --filter <query>", "Filter discovered skills by name, description, scope, or path.")
-    .option("-y, --yes", "Accept the import confirmation prompt.")
-    .option("--dry-run", "Show what would be imported without writing files.")
-    .option("--overwrite", "Replace existing destination skill folders.")
-    .option("--skip-existing", "Skip skills whose destination folder already exists.")
-    .addOption(new Option("--no-personal", "Do not scan ~/.claude/skills.").default(true))
-    .addOption(new Option("--no-project", "Do not scan project .claude/skills directories.").default(true))
-    .addOption(new Option("--no-openai-metadata", "Do not create agents/openai.yaml metadata.").default(true))
-    .action(async (options: CliOptions) => {
-      await runImport(options);
+    .name("skill-bridge")
+    .description("Bidirectional CLI for migrating skills between Claude Code and Codex.")
+    .version("0.1.0");
+
+  addDirectionCommand(program, directions["to-codex"]);
+  addDirectionCommand(program, directions["to-claude"]);
+
+  program.action(async () => {
+    printHeader();
+    const choice = await select<DirectionChoice>({
+      message: "What do you want to migrate?",
+      choices: [
+        {
+          name: "Claude Code -> Codex",
+          value: "to-codex",
+          description: directions["to-codex"].description,
+        },
+        {
+          name: "Codex -> Claude Code",
+          value: "to-claude",
+          description: directions["to-claude"].description,
+        },
+        {
+          name: "Cancel",
+          value: "cancel",
+        },
+      ],
     });
+
+    if (choice === "cancel") {
+      console.log(chalk.yellow("Migration cancelled."));
+      return;
+    }
+
+    await runMigration(directions[choice], defaultOptions(directions[choice]));
+  });
 
   await program.parseAsync(argv);
 }
 
-async function runImport(options: CliOptions): Promise<void> {
+function addDirectionCommand(program: Command, config: DirectionConfig): void {
+  program
+    .command(config.command)
+    .description(config.description)
+    .option("-s, --source <path...>", `Custom ${config.sourceLabel} skills directory or a single skill directory.`)
+    .option("-t, --target <path>", `${config.targetLabel} skills directory.`, config.defaultTarget)
+    .option("--cwd <path>", `Project directory used for ${config.sourceLabel} skill discovery.`, process.cwd())
+    .option("-a, --all", "Select every discovered skill without opening the selector.")
+    .option("-f, --filter <query>", "Filter discovered skills by name, description, scope, or relative path.")
+    .option("-y, --yes", "Accept the migration confirmation prompt.")
+    .option("--dry-run", "Show what would be migrated without writing files.")
+    .option("--overwrite", "Replace existing destination skill folders.")
+    .option("--skip-existing", "Skip skills whose destination folder already exists.")
+    .addOption(new Option("--no-personal", `Do not scan personal ${config.sourceLabel} skills.`).default(true))
+    .addOption(new Option("--no-project", `Do not scan project ${config.sourceLabel} skills.`).default(true))
+    .addOption(new Option("--no-codex-metadata", "Do not create agents/openai.yaml when migrating to Codex.").default(true))
+    .action(async (options: BridgeOptions) => {
+      await runMigration(config, options);
+    });
+}
+
+function defaultOptions(config: DirectionConfig): BridgeOptions {
+  return {
+    target: config.defaultTarget,
+    cwd: process.cwd(),
+    personal: true,
+    project: true,
+    codexMetadata: true,
+  };
+}
+
+async function runMigration(config: DirectionConfig, options: BridgeOptions): Promise<void> {
   const homeDir = os.homedir();
   const cwd = resolvePath(options.cwd, process.cwd(), homeDir);
   const targetDir = resolvePath(options.target, cwd, homeDir);
   const sources = options.source ?? [];
 
-  printHeader();
+  if (process.argv[2] === config.command) {
+    printHeader();
+  }
+
+  console.log(chalk.bold(`${config.sourceLabel} -> ${config.targetLabel}`));
+  console.log(chalk.dim(config.description));
+  console.log("");
 
   const candidates = await discoverSkills({
+    platform: config.sourcePlatform,
     cwd,
     homeDir,
     includePersonal: options.personal ?? true,
@@ -66,8 +165,8 @@ async function runImport(options: CliOptions): Promise<void> {
   });
 
   if (candidates.length === 0) {
-    console.log(chalk.yellow("No Claude Code skills were found."));
-    console.log(chalk.dim("Pass --source <path> if your skills live outside ~/.claude/skills or this project."));
+    console.log(chalk.yellow(config.emptyMessage));
+    console.log(chalk.dim("Pass --source <path> if your skills live in a custom directory."));
     return;
   }
 
@@ -87,38 +186,31 @@ async function runImport(options: CliOptions): Promise<void> {
     return;
   }
 
-  printImportPlan(selected, targetDir, Boolean(options.dryRun), Boolean(options.overwrite));
+  printMigrationPlan(selected, targetDir, Boolean(options.dryRun), Boolean(options.overwrite));
 
   if (!options.yes && !options.dryRun) {
     const approved = await confirm({
-      message: `Import ${selected.length} skill${selected.length === 1 ? "" : "s"} into ${targetDir}?`,
+      message: `Migrate ${selected.length} skill${selected.length === 1 ? "" : "s"} into ${targetDir}?`,
       default: false,
     });
 
     if (!approved) {
-      console.log(chalk.yellow("Import cancelled."));
+      console.log(chalk.yellow("Migration cancelled."));
       return;
     }
   }
 
   const results = await importSkills(selected, {
+    targetPlatform: config.targetPlatform,
     targetDir,
     overwrite: Boolean(options.overwrite),
     skipExisting: Boolean(options.skipExisting),
-    createOpenAiMetadata: options.openaiMetadata ?? true,
+    createCodexMetadata: options.codexMetadata ?? true,
     dryRun: Boolean(options.dryRun),
   });
 
   printResults(results);
 }
-
-interface SelectOptions {
-  selectAll: boolean;
-  filterQuery?: string;
-}
-
-type SelectionAction = "search" | "browse" | "all" | "cancel";
-type SearchResultAction = "choose" | "all" | "again" | "back" | "cancel";
 
 async function selectCandidates(candidates: SkillCandidate[], options: SelectOptions): Promise<SkillCandidate[]> {
   if (options.filterQuery !== undefined) {
@@ -165,7 +257,7 @@ async function interactiveSelection(candidates: SkillCandidate[]): Promise<Skill
         {
           name: `Select all ${candidates.length} skills`,
           value: "all",
-          description: "Import every discovered skill.",
+          description: "Migrate every discovered skill.",
         },
         {
           name: "Cancel",
@@ -255,7 +347,7 @@ async function searchSelection(candidates: SkillCandidate[]): Promise<SkillCandi
 
 async function selectFromList(candidates: SkillCandidate[]): Promise<SkillCandidate[]> {
   const selectedIds = await checkbox<string>({
-    message: "Select skills to import. Space selects, a toggles all, i inverts, enter confirms.",
+    message: "Select skills to migrate. Space selects, a toggles all, i inverts, enter confirms.",
     pageSize: 12,
     required: false,
     choices: candidates.map((candidate) => ({
@@ -274,18 +366,18 @@ function printFilteredCount(filteredCount: number, totalCount: number): void {
 }
 
 function printHeader(): void {
-  console.log(chalk.bold("Claude Skills to Codex"));
-  console.log(chalk.dim("Migrate Claude Code skill folders into Codex-compatible skills.\n"));
+  console.log(chalk.bold("Skill Bridge"));
+  console.log(chalk.dim("Migrate skills between Claude Code and Codex.\n"));
 }
 
-function printImportPlan(
+function printMigrationPlan(
   candidates: SkillCandidate[],
   targetDir: string,
   dryRun: boolean,
   overwrite: boolean,
 ): void {
   console.log("");
-  console.log(chalk.bold(dryRun ? "Dry run plan" : "Import plan"));
+  console.log(chalk.bold(dryRun ? "Dry run plan" : "Migration plan"));
   console.log(`${chalk.dim("Target")} ${targetDir}`);
   console.log(`${chalk.dim("Mode")} ${overwrite ? "overwrite existing skills" : "skip existing skills unless --overwrite is set"}`);
 
@@ -312,8 +404,9 @@ function printResults(results: ImportResult[]): void {
   }
 
   console.log("");
-  const importLabel = imported.some((result) => result.status === "would-import") ? "would import" : "imported";
-  const skipLabel = skipped.some((result) => result.status === "would-skip") ? "would skip" : "skipped";
+  const dryRun = results.some((result) => result.status === "would-import" || result.status === "would-skip");
+  const importLabel = dryRun ? "would migrate" : "migrated";
+  const skipLabel = dryRun ? "would skip" : "skipped";
   console.log(`${chalk.green(String(imported.length))} ${importLabel}, ${chalk.yellow(String(skipped.length))} ${skipLabel}.`);
 }
 
