@@ -5,6 +5,14 @@
   "type": "module",
   "license": "MIT",
   "author": "Estifie",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "bin": {
     "claude-skills-to-codex": "./dist/index.js",
     "csk": "./dist/index.js"
@@ -17,12 +25,15 @@
   "engines": {
     "node": ">=20"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
     "check": "tsc --noEmit",
     "test": "vitest run",
     "dev": "tsx src/index.ts",
-    "prepack": "npm run build"
+    "prepare": "npm run build"
   },
   "keywords": [
     "claude-code",
